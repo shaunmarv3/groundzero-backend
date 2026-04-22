@@ -1,0 +1,48 @@
+# ============================================================
+# GroundZero — Backend Dependencies
+# Python 3.11 required
+# Install: pip install -r requirements.txt
+# ============================================================
+
+# ------ Web Framework ----------------------------------------
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9        # required for file upload (UploadFile)
+httpx==0.27.0                  # async HTTP client (tests, internal requests)
+
+# ------ Config & Validation ----------------------------------
+pydantic==2.7.1
+pydantic-settings==2.2.1
+python-dotenv==1.0.1
+
+# ------ ML Core ----------------------------------------------
+torch==2.3.0
+torchvision==0.18.0
+torchaudio==2.3.0
+
+# ------ Transformers & CLIP ----------------------------------
+transformers==4.41.1
+peft==0.11.1                   # LoRA adapters for CLIP fine-tuning
+einops==0.8.0                  # clean tensor manipulation for attention layers
+open-clip-torch==2.24.0        # alternative CLIP loader (fallback)
+
+# ------ Video Processing -------------------------------------
+ffmpeg-python==0.2.0           # Python bindings for ffmpeg frame extraction
+opencv-python-headless==4.9.0.80  # fallback frame reading without GUI
+
+# ------ Evaluation & Metrics ---------------------------------
+scikit-learn==1.5.0            # calibration curves, precision/recall
+numpy==1.26.4
+matplotlib==3.9.0              # attention heatmaps, ablation plots
+
+# ------ Experiment Tracking ----------------------------------
+wandb==0.17.0
+
+# ------ HuggingFace Hub (model storage) ----------------------
+huggingface-hub==0.23.2
+datasets==2.19.1               # loading QVHighlights/Charades-STA from Hub
+
+# ------ Utilities --------------------------------------------
+tqdm==4.66.4                   # progress bars in evaluation scripts
+Pillow==10.3.0                 # image loading (frame → PIL.Image)
+scipy==1.13.0                  # signal processing utilities
