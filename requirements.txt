@@ -22,12 +22,17 @@ torchaudio==2.3.0
 
 # ------ Transformers & CLIP ----------------------------------
 transformers==4.41.1
-peft==0.11.1                   # LoRA adapters for CLIP fine-tuning
+peft==0.11.1                   # LoRA adapters for SigLIP 2 fine-tuning
 einops==0.8.0                  # clean tensor manipulation for attention layers
 open-clip-torch==2.24.0        # alternative CLIP loader (fallback)
 
 # ------ Video Processing -------------------------------------
-ffmpeg-python==0.2.0           # Python bindings for ffmpeg frame extraction
+# NOTE: No system ffmpeg install needed!
+# imageio-ffmpeg bundles the ffmpeg binary for Windows/Mac/Linux.
+# Anyone who clones this repo + runs pip install -r requirements.txt
+# gets a working ffmpeg automatically.
+ffmpeg-python==0.2.0           # Python API for building ffmpeg commands
+imageio-ffmpeg                 # ships ffmpeg binary (no system install required)
 opencv-python-headless==4.9.0.80  # fallback frame reading without GUI
 
 # ------ Evaluation & Metrics ---------------------------------

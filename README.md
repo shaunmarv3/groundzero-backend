@@ -986,7 +986,7 @@ groundzero-backend/
 ```
 
 ```
-groundzero-training/                    # Colab notebooks only — not deployed
+groundzero-training/   (this is actually notebook folder in backend repo)
 │
 ├── 01_data_preparation.ipynb           # Download datasets, extract frames, build index
 ├── 02_baseline_measurement.ipynb       # Measure CLIP zero-shot baseline (run first)
