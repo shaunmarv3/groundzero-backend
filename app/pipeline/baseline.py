@@ -16,6 +16,27 @@ Used in:
   - notebook/02_baseline_measure  (formal evaluation on QVHighlights val set)
 
 Returns a dict so callers can inspect scores, not just the final answer.
+
+⚠️  KNOWN LIMITATION — frame embeddings are recomputed on EVERY call.
+    If the same video is queried multiple times (e.g. user asks 3 questions
+    about the same lecture), the SigLIP 2 visual tower runs 3 times
+    on the same frames — wasteful and slow.
+
+    TODO (Phase 7 — API Routes):
+    Add an embedding cache so frame_feats are computed once per video
+    and reused for every subsequent query on that video.
+    Simple fix — just a Python dict or torch.save():
+
+        cache = {}   # { video_path_str : frame_feats_tensor }
+
+        if video_path in cache:
+            frame_feats = cache[video_path]   # reuse, skip SigLIP visual tower
+        else:
+            frame_feats = encode_frames(...)  # slow, runs once
+            cache[video_path] = frame_feats   # store for next query
+
+    No vector database needed — a plain dict is fine since we search
+    WITHIN one video, not ACROSS millions of videos.
 """
 
 from __future__ import annotations
@@ -93,6 +114,15 @@ def siglip_zeroshot_baseline(
     text_feat = F.normalize(text_feat, dim=-1)
 
     # ---- 3. Encode frames in batches ------------------------------
+    # ⚠️  BOTTLENECK: this re-runs SigLIP 2 visual tower on every call,
+    #  even if the same video was already encoded for a previous query.
+    #  frame_feats is a local variable — it gets thrown away when this
+    #  function returns, so the next query recomputes it from scratch.
+    #
+    #  TODO (Phase 7): move frame encoding outside this function and
+    #  pass frame_feats in as a parameter (or use the cache dict above).
+    #  Only the query encoding (Step 2) and similarity (Step 4) need
+    #  to re-run per query — frame encoding should run once per video.
     logger.info(f"Encoding {len(pil_imgs)} frames (batch_size={batch_size})...")
     all_frame_feats = []
 

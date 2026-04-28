@@ -178,3 +178,97 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# ============================================================
+#   GroundZero — Zero-Shot Baseline (Phase 3.1)
+#   frame_extractor + SigLIP 2 → temporal prediction
+# ============================================================
+
+# ============================================================
+#   Loading SigLIP 2 So400m (from cache)...
+#   Device: CUDA
+# ============================================================
+
+# Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.    
+
+# ────────────────────────────────────────────────────────────
+#   RUNNING BASELINE
+# ────────────────────────────────────────────────────────────
+#   Video: Camera_Lens_Video_Generation-enhanced.mp4
+
+#   Query 1/5: "a camera lens focusing"
+#   → Best frame:  t=7.00s  (score=+0.0231)
+#   → Predicted:   [5.0s, 8.0s]
+#   → Latency:     8.72s for 8 frames
+
+#   Query 2/5: "light reflecting off a surface"
+#   → Best frame:  t=6.00s  (score=+0.0356)
+#   → Predicted:   [4.0s, 8.0s]
+#   → Latency:     5.83s for 8 frames
+
+#   Query 3/5: "a fast moving object"
+#   → Best frame:  t=7.00s  (score=+0.0333)
+#   → Predicted:   [5.0s, 8.0s]
+#   → Latency:     5.80s for 8 frames
+
+#   Query 4/5: "darkness or a black screen"
+#   → Best frame:  t=7.00s  (score=+0.0476)
+#   → Predicted:   [5.0s, 8.0s]
+#   → Latency:     5.83s for 8 frames
+
+#   Query 5/5: "bright light or explosion"
+#   → Best frame:  t=7.00s  (score=+0.0193)
+#   → Predicted:   [5.0s, 8.0s]
+#   → Latency:     5.60s for 8 frames
+
+
+# ============================================================
+#   FULL SIMILARITY TABLE (all frames × all queries)
+# ============================================================
+
+#   t (s)     a camera lens fo…   light reflecting…   a fast moving ob…   darkness or a bl…   bright light or …
+
+#   ────────  ──────────────────  ──────────────────  ──────────────────  ──────────────────  ──────────────────
+#   0.00      +0.0067             +0.0216             +0.0004             +0.0212             +0.0075          
+
+#   1.00      +0.0097             +0.0204             +0.0001             +0.0188             +0.0076          
+
+#   2.00      +0.0056             +0.0210             +0.0095             +0.0255             +0.0050          
+
+#   3.00      +0.0153             +0.0220             +0.0129             +0.0307             +0.0027          
+
+#   4.00      +0.0186             +0.0280             +0.0196             +0.0371             +0.0091          
+
+#   5.00      +0.0226             +0.0281             +0.0282             +0.0448             +0.0138          
+
+#   6.00      +0.0197             +0.0356 ✅           +0.0289             +0.0448             +0.0157         
+
+#   7.00      +0.0231 ✅           +0.0331             +0.0333 ✅           +0.0476 ✅           +0.0193 ✅    
+
+
+# ============================================================
+#   WHAT THIS DEMONSTRATES
+# ============================================================
+
+#   ✅ The full zero-shot pipeline just ran end-to-end:
+#      video → frames → SigLIP 2 visual tower → cosine sim → timestamp
+
+#   ⚠️  ALL frames are getting VERY similar scores (~0.01–0.05 range).
+#      This is the core problem:
+
+#      1. Consecutive frames look nearly identical → SigLIP 2 can't
+#         tell which one is the START vs END of an event.
+
+#      2. The ±2s fixed window is a guess. If the query matches
+#         a 30-second event, ±2s will be completely wrong.
+
+#      3. SigLIP 2 was trained on still photos, not video moments.
+#         Abstract queries ('focusing', 'reflecting') don't map
+#         cleanly to individual frames.
+
+#   This is EXACTLY why we build the 3 custom modules:
+#      Temporal Context Module  → each frame knows ±60s of context
+#      Cross-Modal Transformer  → query searches the full sequence
+#      Span Extraction Head     → predicts real start AND end, not ±5s
+
+# ============================================================
