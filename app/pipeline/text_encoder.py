@@ -1,0 +1,90 @@
+"""
+text_encoder.py — SigLIP 2 So400m Text Encoder (fully frozen).
+Phase 3.3 (Chunk E).
+
+Architecture:
+  Backbone : SigLIP 2 So400m text tower — same model as visual_encoder.py.
+             Fully frozen, no LoRA (text queries don't need video-specific adaptation).
+  Output   : (1, 1152) float16 tensor for a single query.
+             (N, 1152) float16 tensor for a batch of queries.
+
+Note: TextEncoder and VisualEncoder both load the full SigLIP 2 model for
+independent testing. In GroundZeroModel (Phase 3.7) they will share one
+backbone instance to avoid loading 400M params twice.
+"""
+
+import torch
+import torch.nn as nn
+from transformers import AutoProcessor, AutoModel
+
+
+class TextEncoder(nn.Module):
+    """
+    SigLIP 2 So400m text tower — fully frozen.
+
+    Trainable: 0 params (text queries need no video-specific adaptation)
+    Frozen:    entire SigLIP 2 backbone
+    """
+
+    def __init__(
+        self,
+        model_id: str = "google/siglip2-so400m-patch14-384",
+        device: str = "cuda",
+    ):
+        super().__init__()
+        self.device = device
+
+        self.processor = AutoProcessor.from_pretrained(model_id)
+
+        full_model = AutoModel.from_pretrained(model_id, torch_dtype=torch.float16)
+
+        # Freeze everything — text encoder is fully static during training
+        for param in full_model.parameters():
+            param.requires_grad = False
+
+        self.model = full_model.to(device)
+
+    def encode_query(self, query: str) -> torch.Tensor:
+        """
+        Encode a single text query.
+
+        Args:
+            query : query string, e.g. "person opens a door"
+
+        Returns:
+            Tensor (1, 1152)
+        """
+        inputs = self.processor(
+            text=[query],
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+        ).to(self.device)
+
+        features = self.model.get_text_features(**inputs)  # (1, 1152)
+        return features
+
+    def encode_queries(self, queries: list) -> torch.Tensor:
+        """
+        Encode a batch of text queries.
+
+        Args:
+            queries : list of query strings
+
+        Returns:
+            Tensor (N, 1152)
+        """
+        inputs = self.processor(
+            text=queries,
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+        ).to(self.device)
+
+        features = self.model.get_text_features(**inputs)  # (N, 1152)
+        return features
+
+    def count_params(self) -> dict:
+        trainable = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        total = sum(p.numel() for p in self.model.parameters())
+        return {"trainable": trainable, "total": total, "frozen": total - trainable}
