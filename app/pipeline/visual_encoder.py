@@ -85,3 +85,45 @@ class VisualEncoder(nn.Module):
             "total": total,
             "frozen": total - trainable,
         }
+
+#   GroundZeroModel
+#   ├── VisualEncoder       ← visual_encoder.py  (this file)
+#   ├── TextEncoder         ← text_encoder.py    (Chunk E)
+#   ├── TemporalContext     ← temporal_context.py (Chunk C, done)
+#   ├── CrossModalTransformer
+#   └── SpanExtractionHead
+
+
+#  After training, Phase 7 loading will look exactly like your LLM experience — two options:
+
+#   Option A — keep LoRA separate (small checkpoint, 0.147M):
+#   encoder = VisualEncoder()                          # empty LoRA slots
+#   encoder.load_adapter("our_trained_lora_weights")  # fill slots
+
+#   Option B — merge and drop LoRA (what you did with merge_and_unload()):
+#   vision_model = encoder.model.vision_model.merge_and_unload()
+#   # LoRA gone, weights baked in, faster inference
+
+#   We'll do Option B in Phase 8. So yes — the final production model will have no LoRA visible at inference, same as your experience.
+
+#   The only reason LoRA config lives in visual_encoder.py is because we're assembling a custom model, not using a Trainer that manages everything for us.
+
+
+# ● Exactly.
+
+#   HuggingFace Trainer approach (what you did):
+#   Trainer owns everything — model loading, LoRA, optimizer, training loop, saving
+#   You just configure it and call trainer.train()
+#   LoRA config naturally lives in the training script because Trainer handles it
+
+#   Pure PyTorch approach (what we're doing):
+#   You own everything — you build the model, write the training loop yourself
+#   LoRA config lives in the model file because YOU are the Trainer
+#   Phase 5 training loop = what SFTTrainer was doing internally
+
+#   That's the whole difference. SFTTrainer is just someone else's Phase 5 training loop written for you. When you use it, you hand it a model and it handles
+#   the rest. When you write your own, you need the model to be fully defined before your training loop touches it — so LoRA config goes in the model file.
+
+#   We're doing pure PyTorch because our model has custom components (TemporalContext, CrossModalTransformer, SpanExtractionHead) that HuggingFace Trainer
+#   doesn't know how to handle. SFTTrainer is built for standard LLMs — give it a model and text data, it knows what to do. Our grounding model takes video
+#   frames + text query → timestamps, which is a completely custom pipeline.
