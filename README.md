@@ -33,21 +33,21 @@ Input: Video file + Text Query
     ▼                    ▼
 ┌──────────────┐   ┌──────────────────┐
 │ Frame        │   │ Text Encoder     │
-│ Sampler      │   │ CLIP text tower  │
-│ 1fps → N     │   │ (frozen)         │
-│ frames       │   │ Query → 512-d    │
-│              │   │ → project to     │
-│              │   │   768-d          │
+│ Sampler      │   │ SigLIP 2 text    │
+│ 1fps → N     │   │ tower (frozen)   │
+│ frames       │   │ Query → 1152-d   │
+│              │   │ (no projection   │
+│              │   │  needed)         │
 └──────┬───────┘   └────────┬─────────┘
        │                    │
        ▼                    │
 ┌──────────────┐            │
 │ Visual       │            │
 │ Encoder      │            │
-│ CLIP ViT-L   │            │
-│ + LoRA       │            │
-│ adapters     │            │
-│ Frame → 768-d│            │
+│ SigLIP 2     │            │
+│ So400m +     │            │
+│ LoRA adapters│            │
+│ Frame →1152-d│            │
 └──────┬───────┘            │
        │                    │
        ▼                    ▼
@@ -95,12 +95,12 @@ Videos are sampled at 1 frame per second (fps) for the initial coarse pass. A 30
 
 For inference, a **coarse-to-fine strategy** is used: the initial 1fps pass identifies the approximate region, then a second pass re-samples that region at 4fps for precise boundary localization (see Workflow section).
 
-**Visual Encoder: CLIP ViT-L/14 with LoRA Adapters**
-Each sampled frame is passed through the CLIP visual encoder (ViT-L/14). CLIP is used because its visual representations are already aligned with natural language — it understands that a frame showing a person raising their hand corresponds semantically to "someone raises their hand." This eliminates the need to train a visual encoder from scratch.
+**Visual Encoder: SigLIP 2 So400m with LoRA Adapters**
+Each sampled frame is passed through the SigLIP 2 So400m visual encoder. SigLIP 2 is used because its visual representations are aligned with natural language via sigmoid loss (which works better at small batch sizes than CLIP's softmax contrastive loss), and its masked prediction pretraining produces richer 1152-d embeddings. This eliminates the need to train a visual encoder from scratch.
 
-Output: sequence of frame embeddings `F = [f_1, f_2, ..., f_N]` where each `f_i ∈ R^768` and N = number of sampled frames.
+Output: sequence of frame embeddings `F = [f_1, f_2, ..., f_N]` where each `f_i ∈ R^1152` and N = number of sampled frames.
 
-**CLIP is mostly frozen, with lightweight LoRA adapters on the last 4 transformer blocks.** Fully fine-tuning CLIP requires significantly more GPU memory and data than available on Colab free tier. Instead, low-rank adaptation (LoRA) is applied to the query and value projection layers of CLIP's last 4 blocks — adding ~0.5M trainable parameters while keeping CLIP's 300M parameters frozen. This gives the visual encoder limited temporal adaptability without the memory cost of full fine-tuning.
+**SigLIP 2 is mostly frozen, with lightweight LoRA adapters on the last 4 transformer blocks.** Low-rank adaptation (LoRA) is applied to the query and value projection layers of SigLIP 2's last 4 blocks (indices 23–26 of 27 total) — adding ~0.147M trainable parameters while keeping the ~0.9B frozen backbone intact. This gives the visual encoder temporal adaptability without the memory cost of full fine-tuning.
 
 ```python
 from peft import LoraConfig, get_peft_model
@@ -108,17 +108,17 @@ from peft import LoraConfig, get_peft_model
 lora_config = LoraConfig(
     r=8, lora_alpha=16,
     target_modules=["q_proj", "v_proj"],
-    layers_to_transform=list(range(20, 24)),  # last 4 of 24 ViT blocks
+    layers_to_transform=[23, 24, 25, 26],  # last 4 of 27 SigLIP 2 blocks
 )
-clip_visual = get_peft_model(clip_model.visual, lora_config)
-# ~0.5M trainable params — fits comfortably in Colab free tier
+siglip_visual = get_peft_model(siglip_model.vision_model, lora_config)
+# ~0.147M trainable params — backbone (~0.9B) stays frozen
 ```
 
 ---
 
 ### Stage 2: Temporal Context Module
 
-Raw CLIP frame embeddings have no temporal awareness — each frame is encoded independently with no knowledge of what came before or after. The Temporal Context Module fixes this.
+Raw SigLIP 2 frame embeddings have no temporal awareness — each frame is encoded independently with no knowledge of what came before or after. The Temporal Context Module fixes this.
 
 **Architecture:**
 
@@ -128,7 +128,7 @@ Raw CLIP frame embeddings have no temporal awareness — each frame is encoded i
 
 ```python
 class TemporalContextModule(nn.Module):
-    def __init__(self, d_model=768):
+    def __init__(self, d_model=1152):
         super().__init__()
         self.pos_encoding = SinusoidalPositionalEncoding(d_model)
         self.convs = nn.ModuleList([
@@ -155,12 +155,12 @@ The positional encoding uses fractional timestamps (`t/T` where T is total video
 
 ### Stage 3: Text Encoding
 
-**Text Encoder: CLIP text tower (frozen)**
-The query string is passed through the frozen CLIP text encoder.
+**Text Encoder: SigLIP 2 So400m text tower (frozen)**
+The query string is passed through the frozen SigLIP 2 text encoder.
 
-Output: query embedding `q ∈ R^512`, projected to `R^768` via a learned linear layer to match the visual embedding dimension.
+Output: query embedding `q ∈ R^1152` — same dimension as the visual embeddings with no projection layer needed. SigLIP 2's visual and text towers are trained jointly in the same 1152-d space.
 
-**Frozen for the same reason as the visual encoder.** The cross-modal transformer learns to align the spaces, not modify the encoders.
+**Fully frozen — 0 trainable parameters.** Text queries need no video-specific adaptation; the cross-modal transformer learns to align the representations, not modify the encoders.
 
 ---
 
@@ -172,40 +172,33 @@ This is the core learned component. It takes the time-aware frame sequence and t
 
 ```python
 class CrossModalTransformer(nn.Module):
-    def __init__(self, d_model=768, n_heads=8, n_layers=4, dropout=0.1):
+    def __init__(self, d_model=1152, n_heads=8, n_layers=4, dropout=0.1):
         super().__init__()
-        # Query is the "question being asked"
-        # Frame sequence is the "context being searched"
-        self.cross_attention_layers = nn.ModuleList([
+        self.cross_layers = nn.ModuleList([
             CrossAttentionBlock(d_model, n_heads, dropout)
             for _ in range(n_layers)
         ])
-        self.self_attention_layers = nn.ModuleList([
+        self.self_layers = nn.ModuleList([
             SelfAttentionBlock(d_model, n_heads, dropout)
             for _ in range(n_layers)
         ])
 
-    def forward(self, frame_embeddings, query_embedding):
-        # query_embedding shape: (batch, 1, 768)
-        # frame_embeddings shape: (batch, N_frames, 768)
+    def forward(self, frames, query):
+        # query shape: (batch, 1, 1152)   — single query token
+        # frames shape: (batch, N, 1152)  — frame sequence
 
-        x = frame_embeddings
-        for cross_attn, self_attn in zip(self.cross_attention_layers, self.self_attention_layers):
-            # Cross-attention: query attends over frames
-            # Q = query (what we're looking for)
-            # K, V = frames (the temporal context being searched)
-            # This produces query-conditioned relevance scores for each frame
-            attn_output = cross_attn(query=query_embedding, key=x, value=x)
+        for cross_attn, self_attn in zip(self.cross_layers, self.self_layers):
+            # Cross-attention: Q=query, K/V=frames
+            # query attends over N frames → attention weights (batch, 1, N)
+            # enriched_query (batch, 1, 1152) broadcast back weighted by per-frame score
+            # relevant frames absorb strong signal; irrelevant frames get almost none
+            frames = cross_attn(frames, query)
 
-            # Broadcast attention output back to frame dimension
-            # Each frame is modulated by how relevant it is to the query
-            x = x + attn_output.expand_as(x)
+            # Self-attention: Q=K=V=frames
+            # spreads query-relevance signal across temporal neighbours
+            frames = self_attn(frames)
 
-            # Self-attention: frames attend to each other
-            # "given query relevance, refine temporal context"
-            x = self_attn(x)
-
-        return x  # grounded frame embeddings: (batch, N_frames, 768)
+        return frames  # grounded frame embeddings: (batch, N, 1152)
 ```
 
 **Why query-over-frames attention:** The query is a single token — using it as K/V in cross-attention (the original design) reduces cross-attention to a learned projection, since there's only one key to attend to. Flipping the direction so the query attends over the full frame sequence produces a meaningful attention distribution — a relevance map over the timeline that highlights which frames match the query. This relevance signal is then broadcast back and refined through self-attention.
@@ -226,22 +219,20 @@ This preserves the full temporal structure — the model directly scores "is thi
 
 ```python
 class SpanExtractionHead(nn.Module):
-    def __init__(self, d_model=768):
+    def __init__(self, d_model=1152, dropout=0.1):
         super().__init__()
-        # Per-frame start/end scoring
         self.start_scorer = nn.Sequential(
             nn.Linear(d_model, 256),
             nn.ReLU(),
-            nn.Dropout(0.1),
+            nn.Dropout(dropout),
             nn.Linear(256, 1)    # per-frame start logit
         )
         self.end_scorer = nn.Sequential(
             nn.Linear(d_model, 256),
             nn.ReLU(),
-            nn.Dropout(0.1),
+            nn.Dropout(dropout),
             nn.Linear(256, 1)    # per-frame end logit
         )
-        # Confidence head: does this video contain the described event at all?
         self.confidence_head = nn.Sequential(
             nn.Linear(d_model, 64),
             nn.ReLU(),
@@ -249,23 +240,19 @@ class SpanExtractionHead(nn.Module):
             nn.Sigmoid()         # 0 = event absent, 1 = event present
         )
 
-    def forward(self, grounded_features):
-        # grounded_features: (batch, N_frames, 768) — temporal dimension preserved
-        start_logits = self.start_scorer(grounded_features).squeeze(-1)  # (batch, N)
-        end_logits = self.end_scorer(grounded_features).squeeze(-1)      # (batch, N)
+    def forward(self, x):
+        # x: (batch, N, 1152) — query-aware frame embeddings
+        start_logits = self.start_scorer(x).squeeze(-1)   # (batch, N)
+        end_logits   = self.end_scorer(x).squeeze(-1)     # (batch, N)
 
-        start_probs = F.softmax(start_logits, dim=-1)
-        end_probs = F.softmax(end_logits, dim=-1)
+        # Decode best valid span: score(i,j) = start[i] + end[j], mask j < i
+        # Same decoding as extractive QA (BERT SQuAD) — globally optimal span
+        # (greedy argmax-then-constrain is suboptimal)
 
-        # Decode best valid span: argmax of start_probs[i] * end_probs[j] for j >= i
-        # Same decoding algorithm as extractive QA (BERT SQuAD)
-        best_start, best_end = decode_best_span(start_probs, end_probs)
+        pooled     = x.mean(dim=1)
+        confidence = self.confidence_head(pooled).squeeze(-1)
 
-        # Confidence from pooled features
-        pooled = grounded_features.mean(dim=1)
-        confidence = self.confidence_head(pooled)
-
-        return best_start, best_end, confidence, start_probs, end_probs
+        return start_logits, end_logits, confidence
 ```
 
 **Output is frame indices, converted to fractional timestamps (0–1) by dividing by N_frames.** Multiply by video duration to get seconds. This makes the model length-agnostic.
@@ -392,9 +379,9 @@ Additionally, **negative query injection** is used to train the confidence head:
 **Pass 1 — Coarse Localization (1fps):**
 
 1. **Frame extraction:** Video sampled at 1fps → N frames extracted
-2. **Visual encoding:** Each frame passed through CLIP ViT-L/14 (with LoRA adapters) → N × 768 frame embeddings
+2. **Visual encoding:** Each frame passed through SigLIP 2 So400m (with LoRA adapters) → N × 1152 frame embeddings
 3. **Temporal context:** Dilated 1D temporal conv + positional encoding → time-aware frame embeddings
-4. **Text encoding:** Query passed through frozen CLIP text tower → 512-d embedding → projected to 768-d
+4. **Text encoding:** Query passed through frozen SigLIP 2 text tower → 1152-d embedding (no projection needed)
 5. **Cross-modal attention:** Query attends over frame sequence → grounded frame features with query-relevance scores
 6. **Span extraction:** Per-frame start/end scoring identifies the best span, confidence head outputs event presence score
 7. **Coarse output:** `{ start: 310s, end: 330s, confidence: 0.88 }`
@@ -422,13 +409,13 @@ Every component is evaluated independently and end-to-end. All results logged to
 Before training, measure what zero-shot CLIP cosine similarity retrieval achieves on QVHighlights. This is your floor — the simplest possible approach with no learned temporal reasoning.
 
 ```python
-# Zero-shot CLIP baseline: for each query, find the frame with highest cosine
+# Zero-shot SigLIP 2 baseline: for each query, find the frame with highest cosine
 # similarity to the query embedding. Use that frame as the center of a
 # fixed-width window (e.g., ±5 seconds) as the predicted moment.
 
-def clip_zeroshot_baseline(video_frames, query, window_width=10):
-    query_emb = clip_text_encoder(query)                     # (512,)
-    frame_embs = clip_visual_encoder(video_frames)           # (N, 512)
+def siglip_zeroshot_baseline(video_frames, query, window_width=10):
+    query_emb  = siglip_text_encoder(query)        # (1152,)
+    frame_embs = siglip_visual_encoder(video_frames)  # (N, 1152)
     similarities = F.cosine_similarity(query_emb, frame_embs)
     best_frame_idx = similarities.argmax().item()
     center_time = best_frame_idx / fps
@@ -483,11 +470,11 @@ print(f"R@5 IoU=0.5: {r5_iou05:.4f}")  # How often correct in top-5 predictions
 > **Note:** Baseline numbers below are **estimated**, not measured. The actual CLIP zero-shot baseline must be measured before training (see Eval 0). All targets are relative to baseline and will be adjusted after baseline measurement.
 
 ```
-Metric         | CLIP baseline (est.) | Target (trained) | SOTA reference
----------------|----------------------|------------------|----------------
-R@1 IoU=0.5    | ~0.35               | > 0.50           | ~0.65 (Moment-DETR)
-R@1 IoU=0.7    | ~0.18               | > 0.32           | ~0.45 (Moment-DETR)
-R@5 IoU=0.5    | ~0.55               | > 0.72           | ~0.85 (Moment-DETR)
+Metric         | SigLIP 2 baseline (est.) | Target (trained) | SOTA reference
+---------------|--------------------------|------------------|----------------
+R@1 IoU=0.5    | ~0.35                   | > 0.50           | ~0.65 (Moment-DETR)
+R@1 IoU=0.7    | ~0.18                   | > 0.32           | ~0.45 (Moment-DETR)
+R@5 IoU=0.5    | ~0.55                   | > 0.72           | ~0.85 (Moment-DETR)
 ```
 
 Note: SOTA uses much larger models (DETR-based, pretrained on video-language pairs). Your target is meaningful improvement over baseline, not SOTA. Reaching 77% of SOTA performance with a simpler architecture is a legitimate research contribution.
@@ -769,7 +756,7 @@ Video Duration | N Frames | p50 Latency | p95 Latency
 120 min        | 7,200    | ~16s        | ~22s
 ```
 
-Note: 120-minute video at 1fps = 7,200 frames through CLIP ViT-L/14. This is the practical upper limit on Colab free tier without frame subsampling.
+Note: 120-minute video at 1fps = 7,200 frames through SigLIP 2 So400m. This is the practical upper limit on Colab free tier without frame subsampling.
 
 #### 6.1 Throughput vs Accuracy at Different Sample Rates
 
@@ -929,15 +916,15 @@ groundzero-backend/
 │   │   ├── __init__.py
 │   │   ├── orchestrator.py              # End-to-end prediction pipeline
 │   │   ├── frame_extractor.py          # Video → sampled frames via ffmpeg
-│   │   ├── visual_encoder.py           # CLIP ViT-L/14 + LoRA adapter encoding (batched)
-│   │   ├── text_encoder.py             # CLIP text encoding + projection layer
+│   │   ├── visual_encoder.py           # SigLIP 2 So400m + LoRA adapter encoding (batched)
+│   │   ├── text_encoder.py             # SigLIP 2 text encoding (no projection — already 1152-d)
 │   │   ├── temporal_context.py         # Dilated 1D temporal conv + positional encoding
 │   │   ├── cross_modal_transformer.py  # Cross-modal attention transformer (Q→frames)
 │   │   ├── span_extraction.py          # Per-frame start/end scoring + confidence head
 │   │   └── augmentation.py             # Temporal jitter, crop, speed perturbation
 │   │
 │   ├── models/
-│   │   ├── groundzero_model.py         # Full model class (assembles all components)
+│   │   ├── groundzero_model.py         # Full model (actual location: app/pipeline/)
 │   │   └── checkpoints/                # Trained weights (pulled from HuggingFace Hub)
 │   │
 │   ├── routes/
@@ -1012,8 +999,8 @@ ffmpeg-python for video frame extraction
 torch, torchvision for model inference
 
 # ML Core
-torch, transformers (CLIP from openai/clip-vit-large-patch14)
-peft (LoRA adapters for CLIP fine-tuning)
+torch, transformers (SigLIP 2 from google/siglip2-so400m-patch14-384)
+peft (LoRA adapters for SigLIP 2 vision tower fine-tuning)
 einops (tensor manipulation for attention layers)
 
 # Training (Colab only)

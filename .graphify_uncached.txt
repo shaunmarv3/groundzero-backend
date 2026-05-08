@@ -1,0 +1,5 @@
+CLAUDE.md
+README.md
+requirements.txt
+WORKFLOW.md
+notebook\README.md

@@ -1,0 +1,1773 @@
+{
+  "nodes": [
+    {
+      "id": "claude_md_graphify_rules",
+      "label": "Graphify Rules (CLAUDE.md)",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_groundzero_system",
+      "label": "GroundZero Temporal Video Grounding System",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_temporal_grounding",
+      "label": "Temporal Video Grounding (Problem Domain)",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_frame_sampler",
+      "label": "Frame Sampler",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_visual_encoder",
+      "label": "Visual Encoder (CLIP ViT-L/14 + LoRA)",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_text_encoder",
+      "label": "Text Encoder (CLIP text tower)",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_temporal_context_module",
+      "label": "Temporal Context Module (Dilated Conv1D)",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_cross_modal_transformer",
+      "label": "Cross-Modal Attention Transformer",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_span_extraction_head",
+      "label": "Span Extraction Head",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_lora_adapters",
+      "label": "LoRA Adapters",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_coarse_to_fine_strategy",
+      "label": "Coarse-to-Fine Inference Strategy",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_span_extraction_loss",
+      "label": "Span Extraction Loss",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_temporal_iou_loss",
+      "label": "Temporal IoU Loss",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_contrastive_loss",
+      "label": "Intra-Video Contrastive Loss",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_data_augmentation",
+      "label": "Data Augmentation Strategies",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_qvhighlights",
+      "label": "QVHighlights Dataset",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_charades_sta",
+      "label": "Charades-STA Dataset",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_activitynet_captions",
+      "label": "ActivityNet Captions Dataset",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_didemo",
+      "label": "DiDeMo Dataset",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_tacos",
+      "label": "TACoS Dataset",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_eval_recall_iou",
+      "label": "Recall@K at IoU Threshold Evaluation",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_eval_map",
+      "label": "Mean Average Precision (mAP) Evaluation",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_eval_ablation",
+      "label": "Model Component Ablation Study",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_eval_attention_vis",
+      "label": "Cross-Modal Attention Visualization",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_eval_confidence_calibration",
+      "label": "Confidence Calibration Evaluation",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_eval_regression_suite",
+      "label": "Regression Test Suite",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_wandb_logging",
+      "label": "W&B Experiment Tracking",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_clip_model",
+      "label": "CLIP Model (openai/clip-vit-large-patch14)",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_positional_encoding",
+      "label": "Sinusoidal Positional Encoding (fractional timestamps)",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_rationale_lora",
+      "label": "Rationale: LoRA over Full Fine-tuning",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_rationale_span_vs_regression",
+      "label": "Rationale: Span Extraction vs Regression Head",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_rationale_intra_video_negatives",
+      "label": "Rationale: Intra-Video Negatives vs In-Batch",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_rationale_query_over_frames",
+      "label": "Rationale: Query-over-Frames Cross-Attention Direction",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_rationale_fractional_timestamps",
+      "label": "Rationale: Fractional Timestamps (t/T) for Length Invariance",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_rationale_dilated_conv",
+      "label": "Rationale: Dilated Conv over Standard Conv for Temporal Receptive Field",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_fastapi",
+      "label": "FastAPI Web Framework",
+      "file_type": "document",
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_torch",
+      "label": "PyTorch (torch)",
+      "file_type": "document",
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_transformers",
+      "label": "HuggingFace Transformers",
+      "file_type": "document",
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_peft",
+      "label": "PEFT (LoRA adapters library)",
+      "file_type": "document",
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_einops",
+      "label": "einops (tensor manipulation)",
+      "file_type": "document",
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_ffmpeg_python",
+      "label": "ffmpeg-python (video processing)",
+      "file_type": "document",
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_opencv",
+      "label": "opencv-python-headless (fallback frame reading)",
+      "file_type": "document",
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_scikit_learn",
+      "label": "scikit-learn (calibration, metrics)",
+      "file_type": "document",
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_wandb",
+      "label": "wandb (experiment tracking)",
+      "file_type": "document",
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_huggingface_hub",
+      "label": "HuggingFace Hub (model storage)",
+      "file_type": "document",
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_datasets",
+      "label": "HuggingFace Datasets",
+      "file_type": "document",
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_groundzero_pipeline",
+      "label": "GroundZero Full Pipeline (WORKFLOW.md)",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_phase_a_video_preprocessing",
+      "label": "Phase A: Video Pre-Processing (once per video)",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_phase_b_query_processing",
+      "label": "Phase B: Query Processing (per query)",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_frame_extractor",
+      "label": "FrameExtractor (frame_extractor.py)",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_visual_encoder",
+      "label": "VisualEncoder - SigLIP 2 So400m (visual_encoder.py)",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_temporal_context",
+      "label": "TemporalContext Conv1D (temporal_context.py)",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_text_encoder",
+      "label": "TextEncoder - SigLIP 2 text tower (text_encoder.py)",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_cross_modal_transformer",
+      "label": "CrossModalTransformer (cross_modal_transformer.py)",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_span_head",
+      "label": "SpanExtractionHead (span_extraction.py)",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_siglip2",
+      "label": "SigLIP 2 So400m Backbone (google/siglip2-so400m-patch14-384)",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_cache_point",
+      "label": "Frame Embedding Cache Point (N,1152) tensor",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_coarse_to_fine",
+      "label": "Coarse-to-Fine Inference (1fps then 4fps)",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_training_flow",
+      "label": "Training Flow (AdamW, 20 epochs, QVHighlights)",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_rationale_frozen_text",
+      "label": "Rationale: Text Encoder Frozen (SigLIP 2 pretraining sufficient)",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_rationale_temporal_vs_crossmodal",
+      "label": "Rationale: TemporalContext vs CrossModalTransformer distinction",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workflow_rationale_per_frame_scoring",
+      "label": "Rationale: Per-Frame Scoring vs Regression (reading comprehension analogy)",
+      "file_type": "document",
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "notebook_readme_training_notebooks",
+      "label": "Training Notebooks Overview (Google Colab)",
+      "file_type": "document",
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "notebook_01_data_preparation",
+      "label": "Notebook 01: Data Preparation",
+      "file_type": "document",
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "notebook_02_baseline_measurement",
+      "label": "Notebook 02: Baseline Measurement (SigLIP 2 zero-shot)",
+      "file_type": "document",
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "notebook_03_train_groundzero",
+      "label": "Notebook 03: Full Training Loop",
+      "file_type": "document",
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "notebook_04_ablation_study",
+      "label": "Notebook 04: Ablation Study",
+      "file_type": "document",
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "notebook_05_evaluation",
+      "label": "Notebook 05: Full Evaluation Suite",
+      "file_type": "document",
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "notebook_06_export_hub",
+      "label": "Notebook 06: Export to HuggingFace Hub",
+      "file_type": "document",
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "notebook_siglip2_backbone",
+      "label": "SigLIP 2 So400m Backbone (notebook context)",
+      "file_type": "document",
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "claude_md_graphify_rules",
+      "target": "readme_groundzero_system",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_temporal_grounding",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_frame_sampler",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_visual_encoder",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_text_encoder",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_temporal_context_module",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_cross_modal_transformer",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_span_extraction_head",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_visual_encoder",
+      "target": "readme_lora_adapters",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_visual_encoder",
+      "target": "readme_clip_model",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_text_encoder",
+      "target": "readme_clip_model",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_temporal_context_module",
+      "target": "readme_positional_encoding",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_coarse_to_fine_strategy",
+      "target": "readme_frame_sampler",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_span_extraction_head",
+      "target": "readme_span_extraction_loss",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_temporal_iou_loss",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_contrastive_loss",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_data_augmentation",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_qvhighlights",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_charades_sta",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_activitynet_captions",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_didemo",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_tacos",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_eval_recall_iou",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_eval_map",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_eval_ablation",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_eval_attention_vis",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_eval_confidence_calibration",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_eval_regression_suite",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_groundzero_system",
+      "target": "readme_wandb_logging",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_rationale_lora",
+      "target": "readme_lora_adapters",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_rationale_span_vs_regression",
+      "target": "readme_span_extraction_head",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_rationale_intra_video_negatives",
+      "target": "readme_contrastive_loss",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_rationale_query_over_frames",
+      "target": "readme_cross_modal_transformer",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_rationale_fractional_timestamps",
+      "target": "readme_positional_encoding",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_rationale_dilated_conv",
+      "target": "readme_temporal_context_module",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "requirements_peft",
+      "target": "readme_lora_adapters",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "requirements_torch",
+      "target": "readme_groundzero_system",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "requirements_transformers",
+      "target": "readme_clip_model",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "requirements_wandb",
+      "target": "readme_wandb_logging",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "requirements_ffmpeg_python",
+      "target": "workflow_frame_extractor",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "requirements_scikit_learn",
+      "target": "readme_eval_confidence_calibration",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "requirements_datasets",
+      "target": "readme_qvhighlights",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "requirements_huggingface_hub",
+      "target": "requirements_datasets",
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "weight": 0.8
+    },
+    {
+      "source": "workflow_groundzero_pipeline",
+      "target": "readme_groundzero_system",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_groundzero_pipeline",
+      "target": "workflow_phase_a_video_preprocessing",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_groundzero_pipeline",
+      "target": "workflow_phase_b_query_processing",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_phase_a_video_preprocessing",
+      "target": "workflow_frame_extractor",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_phase_a_video_preprocessing",
+      "target": "workflow_visual_encoder",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_phase_a_video_preprocessing",
+      "target": "workflow_temporal_context",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_phase_a_video_preprocessing",
+      "target": "workflow_cache_point",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_phase_b_query_processing",
+      "target": "workflow_text_encoder",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_phase_b_query_processing",
+      "target": "workflow_cross_modal_transformer",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_phase_b_query_processing",
+      "target": "workflow_span_head",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_visual_encoder",
+      "target": "workflow_siglip2",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_text_encoder",
+      "target": "workflow_siglip2",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_coarse_to_fine",
+      "target": "workflow_phase_a_video_preprocessing",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_coarse_to_fine",
+      "target": "workflow_phase_b_query_processing",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_training_flow",
+      "target": "workflow_phase_a_video_preprocessing",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_training_flow",
+      "target": "workflow_phase_b_query_processing",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_rationale_frozen_text",
+      "target": "workflow_text_encoder",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_rationale_temporal_vs_crossmodal",
+      "target": "workflow_temporal_context",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_rationale_temporal_vs_crossmodal",
+      "target": "workflow_cross_modal_transformer",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_rationale_per_frame_scoring",
+      "target": "workflow_span_head",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_readme_training_notebooks",
+      "target": "notebook_01_data_preparation",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_readme_training_notebooks",
+      "target": "notebook_02_baseline_measurement",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_readme_training_notebooks",
+      "target": "notebook_03_train_groundzero",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_readme_training_notebooks",
+      "target": "notebook_04_ablation_study",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_readme_training_notebooks",
+      "target": "notebook_05_evaluation",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_readme_training_notebooks",
+      "target": "notebook_06_export_hub",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_readme_training_notebooks",
+      "target": "notebook_siglip2_backbone",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_01_data_preparation",
+      "target": "readme_qvhighlights",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_01_data_preparation",
+      "target": "readme_charades_sta",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_01_data_preparation",
+      "target": "readme_didemo",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_02_baseline_measurement",
+      "target": "readme_eval_recall_iou",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_03_train_groundzero",
+      "target": "readme_wandb_logging",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_04_ablation_study",
+      "target": "readme_eval_ablation",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_05_evaluation",
+      "target": "readme_eval_recall_iou",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_05_evaluation",
+      "target": "readme_eval_map",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_05_evaluation",
+      "target": "readme_eval_confidence_calibration",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_05_evaluation",
+      "target": "readme_eval_attention_vis",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "notebook_06_export_hub",
+      "target": "requirements_huggingface_hub",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workflow_visual_encoder",
+      "target": "readme_visual_encoder",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 0.9
+    },
+    {
+      "source": "workflow_temporal_context",
+      "target": "readme_temporal_context_module",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 0.9
+    },
+    {
+      "source": "workflow_cross_modal_transformer",
+      "target": "readme_cross_modal_transformer",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 0.9
+    },
+    {
+      "source": "workflow_span_head",
+      "target": "readme_span_extraction_head",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 0.9
+    },
+    {
+      "source": "workflow_text_encoder",
+      "target": "readme_text_encoder",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 0.9
+    },
+    {
+      "source": "workflow_coarse_to_fine",
+      "target": "readme_coarse_to_fine_strategy",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 0.95
+    },
+    {
+      "source": "notebook_siglip2_backbone",
+      "target": "workflow_siglip2",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "notebook/README.md",
+      "source_location": null,
+      "weight": 0.95
+    },
+    {
+      "source": "readme_rationale_span_vs_regression",
+      "target": "workflow_rationale_per_frame_scoring",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 0.9
+    },
+    {
+      "source": "readme_rationale_query_over_frames",
+      "target": "workflow_rationale_temporal_vs_crossmodal",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.7,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 0.7
+    },
+    {
+      "source": "workflow_siglip2",
+      "target": "readme_clip_model",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "WORKFLOW.md",
+      "source_location": null,
+      "weight": 0.75
+    },
+    {
+      "source": "requirements_einops",
+      "target": "readme_cross_modal_transformer",
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "requirements.txt",
+      "source_location": null,
+      "weight": 0.8
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "groundzero_pipeline_stages",
+      "label": "GroundZero Full Inference Pipeline Stages",
+      "nodes": [
+        "workflow_frame_extractor",
+        "workflow_visual_encoder",
+        "workflow_temporal_context",
+        "workflow_text_encoder",
+        "workflow_cross_modal_transformer",
+        "workflow_span_head"
+      ],
+      "relation": "implement",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "WORKFLOW.md"
+    },
+    {
+      "id": "training_loss_components",
+      "label": "Joint Training Loss (Span + IoU + Contrastive)",
+      "nodes": [
+        "readme_span_extraction_loss",
+        "readme_temporal_iou_loss",
+        "readme_contrastive_loss"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md"
+    },
+    {
+      "id": "training_datasets_split",
+      "label": "Training Dataset Split (QVHighlights + Charades-STA + DiDeMo)",
+      "nodes": [
+        "readme_qvhighlights",
+        "readme_charades_sta",
+        "readme_didemo"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md"
+    },
+    {
+      "id": "notebook_training_pipeline",
+      "label": "Colab Training Notebook Pipeline (ordered execution)",
+      "nodes": [
+        "notebook_01_data_preparation",
+        "notebook_02_baseline_measurement",
+        "notebook_03_train_groundzero",
+        "notebook_04_ablation_study",
+        "notebook_05_evaluation",
+        "notebook_06_export_hub"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "notebook/README.md"
+    },
+    {
+      "id": "clip_siglip2_backbone_components",
+      "label": "Vision-Language Backbone (CLIP in README vs SigLIP 2 in WORKFLOW)",
+      "nodes": [
+        "readme_clip_model",
+        "workflow_siglip2",
+        "notebook_siglip2_backbone",
+        "readme_visual_encoder",
+        "workflow_visual_encoder"
+      ],
+      "relation": "participate_in",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "README.md"
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}
