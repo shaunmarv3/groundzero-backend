@@ -36,7 +36,7 @@ class TextEncoder(nn.Module):
 
         self.processor = AutoProcessor.from_pretrained(model_id)
 
-        full_model = AutoModel.from_pretrained(model_id, torch_dtype=torch.float16)
+        full_model = AutoModel.from_pretrained(model_id)
 
         # Freeze everything — text encoder is fully static during training
         for param in full_model.parameters():

@@ -113,14 +113,25 @@ def siglip_zeroshot_baseline(
             frame_cache[cache_key] = (frame_feats, all_ts, meta)
             logger.info(f"Cached frame embeddings for '{video_path.name}'")
 
-    frame_feats = torch.cat(all_frame_feats, dim=0)  # (N, 1152)
+    # ---- 2. Encode text query ----------------------------------------
+    logger.info(f"Encoding query: '{query}'")
+    text_inputs = processor(
+        text=[query],
+        return_tensors="pt",
+        padding="max_length",
+        truncation=True,
+    ).to(device)
 
-    # ---- 4. Cosine similarity: every frame vs the query -----------
-    # Since both are L2-normalised, dot product = cosine similarity
+    with torch.no_grad():
+        text_feat = model.get_text_features(**text_inputs)  # (1, 1152)
+    text_feat = F.normalize(text_feat, dim=-1)
+
+    # ---- 3. Cosine similarity: every frame vs the query ---------------
+    # Both are L2-normalised, so dot product = cosine similarity
     scores = (frame_feats @ text_feat.T).squeeze(-1)  # (N,)
     scores_list = scores.cpu().float().tolist()
 
-    # ---- 5. Best frame + fixed-width window -----------------------
+    # ---- 4. Best frame + fixed-width window ---------------------------
     best_idx   = scores.argmax().item()
     best_ts    = all_ts[best_idx]
     best_score = scores_list[best_idx]
@@ -139,7 +150,7 @@ def siglip_zeroshot_baseline(
         "best_ts":     best_ts,
         "best_score":  best_score,
         "video_dur":   meta["duration"],
-        "n_frames":    len(frames),
+        "n_frames":    len(all_ts),
         "all_ts":      all_ts,
         "all_scores":  scores_list,
     }

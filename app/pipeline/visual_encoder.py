@@ -4,11 +4,11 @@ Phase 3.2 (Chunk D).
 
 Architecture:
   Backbone : SigLIP 2 So400m (google/siglip2-so400m-patch14-384)
-             400M params, 1152-d embeddings, 27 transformer blocks
-             Loaded in float16 to fit in GPU memory — stays frozen.
+             ~0.9B params, 1152-d embeddings, 27 transformer blocks
+             Loaded in float32 — 16 GB VRAM handles this comfortably.
   Adapters : LoRA on last 4 blocks (layers 23-26), q_proj + v_proj only.
              get_peft_model automatically freezes the base model.
-  Output   : (N, 1152) float16 tensor — one embedding per frame.
+  Output   : (N, 1152) float32 tensor — one embedding per frame.
 """
 
 import torch
@@ -22,7 +22,7 @@ class VisualEncoder(nn.Module):
     """
     SigLIP 2 So400m vision tower with LoRA adapters on the last 4 blocks.
 
-    Frozen:     entire SigLIP 2 backbone (~400M params, float16)
+    Frozen:     entire SigLIP 2 backbone (~0.9B params, float32)
     Trainable:  LoRA A/B matrices on layers [23,24,25,26], q_proj + v_proj
     """
 
@@ -40,8 +40,7 @@ class VisualEncoder(nn.Module):
         # Processor: resizes images to 384×384 and normalises pixel values
         self.processor = AutoProcessor.from_pretrained(model_id)
 
-        # Full SigLIP 2 model in float16 (saves ~800MB vs float32)
-        full_model = AutoModel.from_pretrained(model_id, torch_dtype=torch.float16)
+        full_model = AutoModel.from_pretrained(model_id)
 
         # Freeze text tower — visual_encoder.py only handles the vision side
         for param in full_model.text_model.parameters():

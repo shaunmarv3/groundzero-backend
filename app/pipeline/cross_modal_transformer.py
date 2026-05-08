@@ -4,8 +4,9 @@ Phase 3.5 (Chunk F).
 
 Architecture:
   4 layers, each layer:
-    1. CrossAttentionBlock  — Q=frames, K=query, V=query
-                              each frame asks "how relevant am I to the query?"
+    1. CrossAttentionBlock  — Q=query, K=frames, V=frames
+                              query attends over all frames → relevance map (B,1,N)
+                              broadcast back: each frame absorbs query signal weighted by its score
                               output: (B, N, d_model) frames with query context injected
 
     2. SelfAttentionBlock   — Q=K=V=frames

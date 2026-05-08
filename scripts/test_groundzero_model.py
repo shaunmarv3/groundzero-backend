@@ -208,6 +208,8 @@ if __name__ == "__main__":
 
 
 
+
+
 # ● All 3 tests passed. A few things worth noting from the output:
 
 #   - temporal_context: 26.6M — higher than the 10M estimate. Makes sense: 4×
@@ -218,3 +220,139 @@ if __name__ == "__main__":
 #   backbone. Not blocking now.
 #   - Total trainable: 154.9M — slightly more than the 138M estimate due to
 #   temporal_context.
+
+
+
+
+
+
+#  1. is empty _init__.py empty proper ???
+#   2. ewhat do u mean by  dtype mismatch in inference path: encode_frames() and
+#   encode_query()
+#     return float16 (SigLIP 2 is loaded in float16), but
+#     temporal_context/cross_modal/span_head are float32. nn.MultiheadAttention
+#     will crash with mixed dtypes when predict() is actually called and   Bug: float16 vs
+#   float32 dtype mismatch — encode_frames()/encode_query() return float16
+#       (SigLIP), cross_modal/span_head are float32 → MultiheadAttention crash in predict()
+#     File: groundzero_model.py
+#     Fix: Added .float() after both encode calls in predict() and _run_pass() and   One thing
+#    worth knowing: the dtype fix (.float()) means the training loop must also call
+#     .float() after encode_frames() before passing tensors to forward(). Since the smoke
+#   tests
+#     use torch.randn() (already float32) they passed fine, but real training with cached
+#   SigLIP
+#     tensors would have hit the same crash. Ready for Phase 4 whenever you are.
+
+
+#   2. The dtype mismatch — explained step by step
+
+#   SigLIP 2 is 1.1 billion parameters. In float32, that's 1.1B × 4 bytes = 4.4 GB of GPU
+#   memory. So we load it in float16 (torch_dtype=torch.float16) — half the memory, 2.2 GB
+#   instead.
+
+#   Our custom modules (TemporalContext, CrossModal, SpanHead) are small (154M params) and stay
+#    in float32 because training is more stable in float32.
+
+#   So the model has two halves with different dtypes:
+#   SigLIP 2 (float16) → encode_frames() → float16 tensor
+#                      → encode_query()  → float16 tensor
+
+#   TemporalContext  (float32 weights)
+#   CrossModal       (float32 weights)
+#   SpanHead         (float32 weights)
+
+#   Here's exactly where the crash happens in _run_pass():
+#   # Step 1: encode_frames returns float16 (SigLIP is float16)
+#   frame_embs = visual_encoder.encode_frames(pil_imgs)   # dtype=float16
+
+#   # Step 2: temporal_context — SURVIVES by accident
+#   # Inside temporal_context.forward():
+#   #   x = x + self.pos_enc(timestamps)
+#   #   pos_enc creates float32 tensors
+#   #   float16 + float32 → PyTorch silently upcasts → x is now float32
+#   #   Conv1d (float32 weights) receives float32 input → OK
+#       # Step 3: encode_query returns float16 (SigLIP is float16)
+#   query_emb = text_encoder.encode_query(query)           # dtype=float16
+#   # query_emb never hits pos_enc, stays float16
+
+#   # Step 4: CrossModalTransformer — CRASHES HERE
+#   # Inside CrossAttentionBlock:
+#   self.attn(
+#       query=query_emb,   # float16  ← different!
+#       key=frame_embs,    # float32  (was upcasted by pos_enc)
+#       value=frame_embs,  # float32
+#   )
+#   # nn.MultiheadAttention requires all three to be the same dtype
+#   # RuntimeError: expected scalar type Half but found Float
+
+#   The fix (.float()) forces everything to float32 right after encoding,
+#   before any custom module touches it:
+#   frame_embs = visual_encoder.encode_frames(...).float()   # float16 →
+#   float32
+#   query_emb  = text_encoder.encode_query(...).float()      # float16 →
+#   float32
+#   # now both are float32, same as all custom modules → no crash
+
+#   Why not just load SigLIP in float32?
+#   You'd need 4.4 GB just for the frozen backbone. With float16 you use 2.2
+#   GB for frozen SigLIP + ~0.6 GB for custom modules = 2.8 GB total, fits
+#   comfortably on a GPU with memory left for training batches.
+
+#   What about the training loop?
+#   Same issue. When Phase 5 training loop calls encode_frames() and passes
+#   the result to forward(), it must also call .float(). We'll write it
+#   correctly in Phase 5, but it's good to know now.
+
+
+
+
+
+
+#  You're right to check. The screenshot confirms: 0.9B params (not 400M,
+#   and not my estimate of 1.1B — I was slightly off).
+
+#   The name "So400m" is misleading:
+#   - "So" = Shape-optimized
+#   - "400m" = the vision encoder alone is ~400M
+#   - But the full model = vision tower (~400M) + text tower (~500M) = ~0.9B
+#   total
+
+#   Our test confirmed this — count_params() showed 1136M per encoder, but
+#   that's because both VisualEncoder and TextEncoder load the full model
+#   (both towers together) and then only use one tower each. So each holds
+#   0.9B params even though it only uses half.
+
+#   VisualEncoder loads full SigLIP 2 → 1136M counted (uses vision side only)
+#   TextEncoder   loads full SigLIP 2 → 1136M counted (uses text side only)
+#   Total in memory: 2 × ~1.1B = ~2.2B params frozen  ← wasteful, fix in
+#   Phase 5
+#   Actual unique params: ~0.9B
+
+#   The dtype issue still applies regardless of size:
+#   - 0.9B × 2 bytes (float16) = 1.8 GB GPU memory for SigLIP
+#   - 0.9B × 4 bytes (float32) = 3.6 GB — that's why we load in float16
+
+#   The .float() fix stands — SigLIP outputs float16 regardless of whether
+#   it's 0.9B or 1.1B.
+
+
+
+#   ┌─────────────────────┬──────────────────────────────────────────────────────┐
+#   │        File         │                        Change                        │
+#   ├─────────────────────┼──────────────────────────────────────────────────────┤
+#   │ visual_encoder.py   │ Removed torch_dtype=torch.float16 — loads float32,   │
+#   │                     │ updated docstrings                                   │
+#   ├─────────────────────┼──────────────────────────────────────────────────────┤
+#   │ text_encoder.py     │ Removed torch_dtype=torch.float16 — loads float32    │
+#   ├─────────────────────┼──────────────────────────────────────────────────────┤
+#   │ run_baseline.py     │ Removed dtype=torch.float16                          │
+#   ├─────────────────────┼──────────────────────────────────────────────────────┤
+#   │ groundzero_model.py │ Removed .float() casts — no longer needed            │
+#   ├─────────────────────┼──────────────────────────────────────────────────────┤
+#   │ baseline.py         │ Removed .float() on normalize calls                  │
+#   └─────────────────────┴──────────────────────────────────────────────────────┘
+
+#   The dtype mismatch bug is eliminated entirely — everything is float32 from end
+#   to end. On Colab (T4, 15 GB) the double-backbone load will use ~7.2 GB which
+#   still fits; after Phase 5 shares one backbone it drops to ~3.6 GB. Ready for
+#   Phase 4?

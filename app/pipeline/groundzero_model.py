@@ -123,8 +123,8 @@ class GroundZeroModel(nn.Module):
         duration = meta["duration"]
 
         # ── encode query once, reuse for both passes ──────────────────
-        query_emb = self.text_encoder.encode_query(query)        # (1, 1152)
-        query_emb = query_emb.unsqueeze(0)                       # (1, 1, 1152)
+        query_emb = self.text_encoder.encode_query(query)  # (1, 1152)
+        query_emb = query_emb.unsqueeze(0)                          # (1, 1, 1152)
 
         # ── Pass 1: coarse (full video at fps_coarse) ──────────────────
         coarse_start, coarse_end, _ = self._run_pass(
@@ -159,9 +159,10 @@ class GroundZeroModel(nn.Module):
         fps: float,
         start_sec: float = 0.0,
         end_sec: float | None = None,
+        max_frames: int | None = 512,
     ) -> tuple:
         """Extract frames, encode, run forward, decode span. Returns (start_sec, end_sec, confidence)."""
-        frames_data = extract_frames(video_path, fps=fps, start_sec=start_sec, end_sec=end_sec)
+        frames_data = extract_frames(video_path, fps=fps, start_sec=start_sec, end_sec=end_sec, max_frames=max_frames)
         if not frames_data:
             return start_sec, end_sec or duration, 0.0
 
@@ -175,9 +176,8 @@ class GroundZeroModel(nn.Module):
             dtype=torch.float32, device=self.device,
         )
 
-        # encode frames
         frame_embs = self.visual_encoder.encode_frames(pil_imgs)  # (N, 1152)
-        frame_embs = frame_embs.unsqueeze(0)                       # (1, N, 1152)
+        frame_embs = frame_embs.unsqueeze(0)                               # (1, N, 1152)
 
         # forward pass
         start_logits, end_logits, confidence = self.forward(frame_embs, timestamps, query_emb)

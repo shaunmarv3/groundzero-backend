@@ -50,7 +50,7 @@ def load_model():
     print(f"  Device: {DEVICE.upper()}")
     print(f"{'='*60}\n")
     processor = AutoProcessor.from_pretrained(MODEL_ID)
-    model     = AutoModel.from_pretrained(MODEL_ID, dtype=torch.float16)
+    model     = AutoModel.from_pretrained(MODEL_ID)
     model     = model.to(DEVICE).eval()
     return processor, model
 
