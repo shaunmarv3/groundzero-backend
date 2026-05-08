@@ -17,26 +17,8 @@ Used in:
 
 Returns a dict so callers can inspect scores, not just the final answer.
 
-⚠️  KNOWN LIMITATION — frame embeddings are recomputed on EVERY call.
-    If the same video is queried multiple times (e.g. user asks 3 questions
-    about the same lecture), the SigLIP 2 visual tower runs 3 times
-    on the same frames — wasteful and slow.
-
-    TODO (Phase 7 — API Routes):
-    Add an embedding cache so frame_feats are computed once per video
-    and reused for every subsequent query on that video.
-    Simple fix — just a Python dict or torch.save():
-
-        cache = {}   # { video_path_str : frame_feats_tensor }
-
-        if video_path in cache:
-            frame_feats = cache[video_path]   # reuse, skip SigLIP visual tower
-        else:
-            frame_feats = encode_frames(...)  # slow, runs once
-            cache[video_path] = frame_feats   # store for next query
-
-    No vector database needed — a plain dict is fine since we search
-    WITHIN one video, not ACROSS millions of videos.
+Pass an optional `frame_cache` dict to reuse frame embeddings across
+    multiple queries on the same video — see function docstring for usage.
 """
 
 from __future__ import annotations
@@ -62,19 +44,27 @@ def siglip_zeroshot_baseline(
     window_sec: float = 5.0,
     device: str = "cuda",
     batch_size: int = 32,
+    frame_cache: dict | None = None,
 ) -> dict:
     """
     Run the naive zero-shot baseline on a single video + query.
 
     Args:
-        video_path:  Path to the video file
-        query:       Natural language query, e.g. "when the speaker laughs"
-        model:       Loaded SigLIP 2 model (AutoModel)
-        processor:   Loaded SigLIP 2 processor (AutoProcessor)
-        fps:         Frame sampling rate (default 1.0 fps)
-        window_sec:  Half-width of the predicted span in seconds (default ±5s)
-        device:      "cuda" or "cpu"
-        batch_size:  How many frames to encode at once (reduce if OOM)
+        video_path:   Path to the video file
+        query:        Natural language query, e.g. "when the speaker laughs"
+        model:        Loaded SigLIP 2 model (AutoModel)
+        processor:    Loaded SigLIP 2 processor (AutoProcessor)
+        fps:          Frame sampling rate (default 1.0 fps)
+        window_sec:   Half-width of the predicted span in seconds (default ±5s)
+        device:       "cuda" or "cpu"
+        batch_size:   How many frames to encode at once (reduce if OOM)
+        frame_cache:  Optional dict { video_path_str: (frame_feats, all_ts, meta) }.
+                      Pass the same dict across multiple queries on the same video —
+                      frame encoding runs once and is reused for every subsequent query.
+                      Example:
+                          cache = {}
+                          for query in queries:
+                              result = siglip_zeroshot_baseline(..., frame_cache=cache)
 
     Returns:
         dict with keys:
@@ -88,52 +78,40 @@ def siglip_zeroshot_baseline(
             all_scores   (list):  cosine similarity score per frame
     """
     video_path = Path(video_path)
+    cache_key  = str(video_path.resolve())
 
-    # ---- 1. Extract frames -----------------------------------------
-    logger.info(f"Extracting frames from '{video_path.name}' at {fps}fps...")
-    frames = extract_frames(video_path, fps=fps)
+    # ---- 1. Extract + encode frames (cache if caller provided dict) ----
+    if frame_cache is not None and cache_key in frame_cache:
+        frame_feats, all_ts, meta = frame_cache[cache_key]
+        logger.info(f"Cache hit for '{video_path.name}' — skipping visual encoding")
+    else:
+        logger.info(f"Extracting frames from '{video_path.name}' at {fps}fps...")
+        frames = extract_frames(video_path, fps=fps)
 
-    if not frames:
-        raise RuntimeError(f"No frames extracted from '{video_path.name}'")
+        if not frames:
+            raise RuntimeError(f"No frames extracted from '{video_path.name}'")
 
-    meta      = get_video_metadata(video_path)
-    all_ts    = [ts for ts, _ in frames]
-    pil_imgs  = [img for _, img in frames]
+        meta     = get_video_metadata(video_path)
+        all_ts   = [ts for ts, _ in frames]
+        pil_imgs = [img for _, img in frames]
 
-    # ---- 2. Encode text query (just once) --------------------------
-    logger.info(f"Encoding query: '{query}'")
-    text_inputs = processor(
-        text=[query],
-        return_tensors="pt",
-        padding=True,
-        truncation=True,
-    ).to(device)
+        logger.info(f"Encoding {len(pil_imgs)} frames (batch_size={batch_size})...")
+        all_frame_feats = []
 
-    with torch.no_grad():
-        text_feat = model.get_text_features(**text_inputs)   # (1, 1152)
-    text_feat = F.normalize(text_feat, dim=-1)
+        for i in range(0, len(pil_imgs), batch_size):
+            batch = pil_imgs[i : i + batch_size]
+            img_inputs = processor(images=batch, return_tensors="pt").to(device)
 
-    # ---- 3. Encode frames in batches ------------------------------
-    # ⚠️  BOTTLENECK: this re-runs SigLIP 2 visual tower on every call,
-    #  even if the same video was already encoded for a previous query.
-    #  frame_feats is a local variable — it gets thrown away when this
-    #  function returns, so the next query recomputes it from scratch.
-    #
-    #  TODO (Phase 7): move frame encoding outside this function and
-    #  pass frame_feats in as a parameter (or use the cache dict above).
-    #  Only the query encoding (Step 2) and similarity (Step 4) need
-    #  to re-run per query — frame encoding should run once per video.
-    logger.info(f"Encoding {len(pil_imgs)} frames (batch_size={batch_size})...")
-    all_frame_feats = []
+            with torch.no_grad():
+                frame_feat = model.get_image_features(**img_inputs)  # (B, 1152)
+            frame_feat = F.normalize(frame_feat, dim=-1)
+            all_frame_feats.append(frame_feat)
 
-    for i in range(0, len(pil_imgs), batch_size):
-        batch = pil_imgs[i : i + batch_size]
-        img_inputs = processor(images=batch, return_tensors="pt").to(device)
+        frame_feats = torch.cat(all_frame_feats, dim=0)  # (N, 1152)
 
-        with torch.no_grad():
-            frame_feat = model.get_image_features(**img_inputs)  # (B, 1152)
-        frame_feat = F.normalize(frame_feat, dim=-1)
-        all_frame_feats.append(frame_feat)
+        if frame_cache is not None:
+            frame_cache[cache_key] = (frame_feats, all_ts, meta)
+            logger.info(f"Cached frame embeddings for '{video_path.name}'")
 
     frame_feats = torch.cat(all_frame_feats, dim=0)  # (N, 1152)
 
