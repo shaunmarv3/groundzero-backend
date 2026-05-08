@@ -22,15 +22,20 @@ import torch.nn as nn
 
 class CrossAttentionBlock(nn.Module):
     """
-    Each frame attends to the query: Q=frames, K=query, V=query.
+    Query attends over frames: Q=query, K=frames, V=frames.
 
-    Output shape matches Q — so output is (B, N, d_model).
-    Each frame gets query context injected in proportion to how well it matches.
+    The query is a single token — using it as K/V (frames=Q) gives only one key,
+    so softmax is trivially 1.0 for every frame regardless of relevance. That
+    reduces to a learned projection, not attention.
+
+    Flipping the direction (query=Q, frames=K/V) produces a meaningful attention
+    distribution over N frames — a relevance map of the timeline. The enriched
+    query is then broadcast back to each frame weighted by its attention score,
+    so relevant frames absorb a strong query signal and irrelevant frames get almost none.
     """
 
     def __init__(self, d_model: int = 1152, n_heads: int = 8, dropout: float = 0.1):
         super().__init__()
-        # batch_first=True so shapes are (B, seq, d_model) not (seq, B, d_model)
         self.attn = nn.MultiheadAttention(
             d_model, n_heads, dropout=dropout, batch_first=True
         )
@@ -48,8 +53,20 @@ class CrossAttentionBlock(nn.Module):
         # frames: (B, N, d_model) — video frame embeddings
         # query:  (B, 1, d_model) — text query embedding
         # returns (B, N, d_model)
-        attn_out, _ = self.attn(query=frames, key=query, value=query)
-        frames = self.norm1(frames + attn_out)
+
+        # query attends over frames → relevance map over the timeline
+        # enriched_query: (B, 1, d_model)
+        # attn_weights:   (B, 1, N) — how much each frame matched the query
+        enriched_query, attn_weights = self.attn(
+            query=query, key=frames, value=frames
+        )
+
+        # broadcast back: scale each frame by its attention weight
+        # relevant frames (high weight) absorb strong query signal
+        # irrelevant frames (weight ≈ 0) get almost no update
+        # attn_weights: (B, 1, N) → (B, N, 1) to broadcast over d_model
+        frame_update = attn_weights.transpose(1, 2) * enriched_query  # (B, N, d_model)
+        frames = self.norm1(frames + frame_update)
         frames = self.norm2(frames + self.ffn(frames))
         return frames
 

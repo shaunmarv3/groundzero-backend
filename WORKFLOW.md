@@ -194,11 +194,12 @@ Output: (B, N, 1152) — each frame now query-aware
 What happens (4 layers, each layer has 2 steps):
 
   CROSS-ATTENTION:
-    Q = frames, K = query, V = query
-    Each frame asks: "how much does my content match this query?"
-    Attention weights: soft scores over the 1152-d query vector
-    Output: frames rewritten as weighted blend of query values
-    → relevant frames get query context injected, irrelevant frames don't
+    Q = query, K = frames, V = frames
+    Query attends over all N frames → attention weights (B, 1, N) = relevance map
+    Enriched query (B, 1, d) broadcast back to each frame, scaled by its attention weight
+    → relevant frames (high weight) absorb strong query signal
+    → irrelevant frames (weight ≈ 0) get almost no update
+    NOTE: Q=frames direction is wrong — with 1 key (query), softmax=1.0 always → degenerate projection
 
   SELF-ATTENTION:
     Q = K = V = frames  (after cross-attention)
