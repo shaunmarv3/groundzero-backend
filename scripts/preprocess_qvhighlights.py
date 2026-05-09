@@ -55,7 +55,6 @@ import json
 import requests
 from pathlib import Path
 
-from datasets import load_dataset
 from huggingface_hub import HfApi
 from PIL import Image
 
@@ -111,9 +110,18 @@ def _upload_checkpoint():
 
 
 # ── Load annotations (text only — no image pixels in this dataset) ────────────
-print("Loading annotations from jwnt4/qvhighlights-50frames...")
-ds      = load_dataset("jwnt4/qvhighlights-50frames", split="train", streaming=True)
-samples = list(ds)
+# The JSON is stored as {qid: sample_dict}, not a list — load_dataset can't
+# parse this format. Download the raw file and parse it manually instead.
+print("Downloading annotation JSON from jwnt4/qvhighlights-50frames...")
+from huggingface_hub import hf_hub_download
+json_path = hf_hub_download(
+    repo_id="jwnt4/qvhighlights-50frames",
+    filename="p1/train_v1.json",
+    repo_type="dataset",
+)
+with open(json_path, encoding="utf-8") as f:
+    raw = json.load(f)  # {qid_str: {vid, conversations, relevant_windows, ...}}
+samples = list(raw.values())
 print(f"Total samples: {len(samples)}")
 
 chunk = samples[START_IDX : END_IDX]
