@@ -7,12 +7,13 @@ Run this in a Colab CPU session (NOT locally — needs internet + disk space).
 Setup in Colab:
     !git clone https://github.com/YOUR_USERNAME/groundzero.git
     %cd groundzero/groundzero-backend
-    !pip install -r requirements.txt datasets huggingface_hub
+    !pip install "huggingface_hub>=0.40.0" -q   # must be >=0.40 for upload_large_folder
+    !pip install -r requirements.txt datasets
 
 Change START_IDX / END_IDX for each session:
-    Session 1: START_IDX = 0,    END_IDX = 2945
-    Session 2: START_IDX = 2945, END_IDX = 5890
-    Session 3: START_IDX = 5890, END_IDX = None
+    Session 1: START_IDX =    0, END_IDX =  400   (done — 229 frames, 400 JSONL merged)
+    Session 2: START_IDX =  400, END_IDX = 1200
+    Session 3: START_IDX = 1200, END_IDX = None
 
 Source datasets:
     Annotations : jwnt4/qvhighlights-50frames  (vid, query, relevant_windows)
@@ -55,7 +56,7 @@ import json
 import requests
 from pathlib import Path
 
-from huggingface_hub import HfApi, login
+from huggingface_hub import HfApi, login, hf_hub_download
 from PIL import Image
 
 from app.pipeline.frame_extractor import extract_frames
@@ -133,7 +134,6 @@ except Exception:
 # The JSON is stored as {qid: sample_dict}, not a list — load_dataset can't
 # parse this format. Download the raw file and parse it manually instead.
 print("Downloading annotation JSON from jwnt4/qvhighlights-50frames...")
-from huggingface_hub import hf_hub_download
 json_path = hf_hub_download(
     repo_id="jwnt4/qvhighlights-50frames",
     filename="p1/train_v1.json",
