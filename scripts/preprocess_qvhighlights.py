@@ -79,7 +79,7 @@ def _get_gt_span(relevant_windows: list) -> tuple:
 def _download_mp4(vid: str, save_path: Path) -> bool:
     url = (
         f"https://huggingface.co/datasets/ayushsdev/qvhighlights-videos"
-        f"/resolve/main/{vid[0]}/{vid}.mp4"
+        f"/resolve/main/{vid[0].lower()}/{vid}.mp4"
     )
     r = requests.get(url, stream=True, timeout=60)
     if r.status_code != 200:
