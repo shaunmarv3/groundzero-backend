@@ -40,11 +40,11 @@ START_IDX    = int(os.environ.get("START_IDX",    "0"))
 END_IDX      = int(_end) if _end.lower() != "none" else None
 HF_REPO_ID   = os.environ.get("HF_REPO_ID",   "YOUR_USERNAME/qvhighlights-1fps")
 HF_TOKEN     = os.environ.get("HF_TOKEN",     "")
-FRAMES_ROOT  = os.environ.get("FRAMES_ROOT",  "/content/qvhighlights_frames")
+FRAMES_ROOT  = os.environ.get("FRAMES_ROOT",  "/content/hf_upload/frames")
 JSONL_PATH   = os.environ.get("JSONL_PATH",   "/content/annotations_train.jsonl")
 FPS          = float(os.environ.get("FPS",    "1.0"))
 FRAME_SIZE   = (384, 384)
-UPLOAD_EVERY = int(os.environ.get("UPLOAD_EVERY", "50"))
+UPLOAD_EVERY = int(os.environ.get("UPLOAD_EVERY", "100"))
 
 assert HF_TOKEN, "Set os.environ['HF_TOKEN'] before running"
 assert "YOUR_USERNAME" not in HF_REPO_ID, "Set os.environ['HF_REPO_ID'] before running"
@@ -92,36 +92,25 @@ def _download_mp4(vid: str, save_path: Path) -> bool:
 
 
 def _upload_checkpoint(new_vids: list):
-    """Upload all new video frame folders in ONE commit + updated JSONL in one more."""
-    print(f"  Uploading {len(new_vids)} video folders in one commit...", flush=True)
+    """Upload new frames via upload_large_folder (resumable) + JSONL via upload_file."""
+    print(f"  Uploading checkpoint ({len(new_vids)} new videos)...", flush=True)
 
-    # Collect all new JPEG paths as (local_path, repo_path) pairs
-    from huggingface_hub import CommitOperationAdd
-    operations = []
-    for vid in new_vids:
-        vid_frame_dir = Path(FRAMES_ROOT) / vid
-        if not vid_frame_dir.exists():
-            continue
-        for jpg in sorted(vid_frame_dir.glob("*.jpg")):
-            operations.append(
-                CommitOperationAdd(
-                    path_in_repo=f"frames/{vid}/{jpg.name}",
-                    path_or_fileobj=str(jpg),
-                )
-            )
-    # Add JSONL to same commit
-    operations.append(
-        CommitOperationAdd(
-            path_in_repo="annotations_train.jsonl",
-            path_or_fileobj=JSONL_PATH,
-        )
-    )
-
-    api.create_commit(
+    # upload_large_folder hashes all files and only uploads what's new —
+    # safe to call repeatedly, never re-uploads already-committed files.
+    # hf_upload/ contains frames/ so files land at frames/{vid}/ in the repo.
+    api.upload_large_folder(
         repo_id=HF_REPO_ID,
         repo_type="dataset",
-        operations=operations,
-        commit_message=f"Add {len(new_vids)} videos",
+        folder_path=str(Path(FRAMES_ROOT).parent),  # /content/hf_upload
+        num_workers=4,
+        print_report=False,
+    )
+
+    api.upload_file(
+        path_or_fileobj=JSONL_PATH,
+        path_in_repo="annotations_train.jsonl",
+        repo_id=HF_REPO_ID,
+        repo_type="dataset",
     )
     print("  Checkpoint uploaded ✓", flush=True)
 
