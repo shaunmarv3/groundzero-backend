@@ -126,6 +126,20 @@ def _upload_checkpoint(new_vids: list):
     print("  Checkpoint uploaded ✓", flush=True)
 
 
+# ── Restore existing JSONL from HuggingFace (prevents overwriting on new session)
+import shutil
+try:
+    existing = hf_hub_download(
+        repo_id=HF_REPO_ID,
+        filename="annotations_train.jsonl",
+        repo_type="dataset",
+    )
+    shutil.copy(existing, JSONL_PATH)
+    n = open(JSONL_PATH).read().count("\n")
+    print(f"Restored {n} existing annotations from HuggingFace")
+except Exception:
+    print("No existing JSONL on HuggingFace — starting fresh")
+
 # ── Load annotations (text only — no image pixels in this dataset) ────────────
 # The JSON is stored as {qid: sample_dict}, not a list — load_dataset can't
 # parse this format. Download the raw file and parse it manually instead.
