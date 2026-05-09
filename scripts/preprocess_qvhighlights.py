@@ -44,7 +44,7 @@ FRAMES_ROOT  = os.environ.get("FRAMES_ROOT",  "/content/qvhighlights_frames")
 JSONL_PATH   = os.environ.get("JSONL_PATH",   "/content/annotations_train.jsonl")
 FPS          = float(os.environ.get("FPS",    "1.0"))
 FRAME_SIZE   = (384, 384)
-UPLOAD_EVERY = int(os.environ.get("UPLOAD_EVERY", "200"))
+UPLOAD_EVERY = int(os.environ.get("UPLOAD_EVERY", "50"))
 
 assert HF_TOKEN, "Set os.environ['HF_TOKEN'] before running"
 assert "YOUR_USERNAME" not in HF_REPO_ID, "Set os.environ['HF_REPO_ID'] before running"
@@ -55,12 +55,13 @@ import json
 import requests
 from pathlib import Path
 
-from huggingface_hub import HfApi
+from huggingface_hub import HfApi, login
 from PIL import Image
 
 from app.pipeline.frame_extractor import extract_frames
 
 Path(FRAMES_ROOT).mkdir(parents=True, exist_ok=True)
+login(token=HF_TOKEN)
 api = HfApi()
 
 
@@ -90,21 +91,37 @@ def _download_mp4(vid: str, save_path: Path) -> bool:
     return True
 
 
-def _upload_checkpoint():
-    print("  Uploading checkpoint to HuggingFace...", flush=True)
-    api.upload_folder(
-        folder_path=FRAMES_ROOT,
-        repo_id=HF_REPO_ID,
-        repo_type="dataset",
-        path_in_repo="frames",
-        token=HF_TOKEN,
+def _upload_checkpoint(new_vids: list):
+    """Upload all new video frame folders in ONE commit + updated JSONL in one more."""
+    print(f"  Uploading {len(new_vids)} video folders in one commit...", flush=True)
+
+    # Collect all new JPEG paths as (local_path, repo_path) pairs
+    from huggingface_hub import CommitOperationAdd
+    operations = []
+    for vid in new_vids:
+        vid_frame_dir = Path(FRAMES_ROOT) / vid
+        if not vid_frame_dir.exists():
+            continue
+        for jpg in sorted(vid_frame_dir.glob("*.jpg")):
+            operations.append(
+                CommitOperationAdd(
+                    path_in_repo=f"frames/{vid}/{jpg.name}",
+                    path_or_fileobj=str(jpg),
+                )
+            )
+    # Add JSONL to same commit
+    operations.append(
+        CommitOperationAdd(
+            path_in_repo="annotations_train.jsonl",
+            path_or_fileobj=JSONL_PATH,
+        )
     )
-    api.upload_file(
-        path_or_fileobj=JSONL_PATH,
-        path_in_repo="annotations_train.jsonl",
+
+    api.create_commit(
         repo_id=HF_REPO_ID,
         repo_type="dataset",
-        token=HF_TOKEN,
+        operations=operations,
+        commit_message=f"Add {len(new_vids)} videos",
     )
     print("  Checkpoint uploaded ✓", flush=True)
 
@@ -128,8 +145,9 @@ chunk = samples[START_IDX : END_IDX]
 print(f"Processing {len(chunk)} videos (indices {START_IDX}–{END_IDX or len(samples)})")
 
 # ── Main processing loop ──────────────────────────────────────────────────────
-done    = 0
-skipped = 0
+done       = 0
+skipped    = 0
+batch_vids = []   # tracks vids processed since last upload
 
 with open(JSONL_PATH, "a", encoding="utf-8") as jsonl_f:
     for i, sample in enumerate(chunk):
@@ -181,17 +199,20 @@ with open(JSONL_PATH, "a", encoding="utf-8") as jsonl_f:
             jsonl_f.flush()
 
             done += 1
+            batch_vids.append(vid)
+
             if done % 50 == 0:
                 print(f"  [{done}/{len(chunk)}] done={done}  skipped={skipped}",
                       flush=True)
 
             if done % UPLOAD_EVERY == 0:
-                _upload_checkpoint()
+                _upload_checkpoint(batch_vids)
+                batch_vids = []   # reset — only upload NEW ones next time
 
         except Exception as e:
             print(f"  [ERROR] {vid}: {e}")
             tmp_mp4.unlink(missing_ok=True)
             skipped += 1
 
-_upload_checkpoint()
+_upload_checkpoint(batch_vids)   # final upload of remaining videos
 print(f"\nFinished. done={done}  skipped={skipped}")
