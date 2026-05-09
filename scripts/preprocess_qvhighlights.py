@@ -27,16 +27,27 @@ Output:
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# ── Edit these for each session ───────────────────────────────────────────────
-START_IDX    = 0
-END_IDX      = 2945       # set to None for the last session
-HF_REPO_ID   = "YOUR_USERNAME/qvhighlights-1fps"  # create this repo on HF first
-HF_TOKEN     = "hf_YOUR_TOKEN_HERE"
-FRAMES_ROOT  = "/content/qvhighlights_frames"
-JSONL_PATH   = "/content/annotations_train.jsonl"
-FPS          = 1.0
+# ── Config — set these as env vars in a Colab cell before running ─────────────
+#
+#   import os
+#   os.environ["HF_TOKEN"]   = "hf_xxxxxxxxxxxx"
+#   os.environ["HF_REPO_ID"] = "your_username/qvhighlights-1fps"
+#   os.environ["START_IDX"]  = "0"       # Session 1: 0,    Session 2: 2945, Session 3: 5890
+#   os.environ["END_IDX"]    = "2945"    # Session 1: 2945, Session 2: 5890, Session 3: None
+#
+_end = os.environ.get("END_IDX", "2945")
+START_IDX    = int(os.environ.get("START_IDX",    "0"))
+END_IDX      = int(_end) if _end.lower() != "none" else None
+HF_REPO_ID   = os.environ.get("HF_REPO_ID",   "YOUR_USERNAME/qvhighlights-1fps")
+HF_TOKEN     = os.environ.get("HF_TOKEN",     "")
+FRAMES_ROOT  = os.environ.get("FRAMES_ROOT",  "/content/qvhighlights_frames")
+JSONL_PATH   = os.environ.get("JSONL_PATH",   "/content/annotations_train.jsonl")
+FPS          = float(os.environ.get("FPS",    "1.0"))
 FRAME_SIZE   = (384, 384)
-UPLOAD_EVERY = 200        # checkpoint to HuggingFace every N completed videos
+UPLOAD_EVERY = int(os.environ.get("UPLOAD_EVERY", "200"))
+
+assert HF_TOKEN, "Set os.environ['HF_TOKEN'] before running"
+assert "YOUR_USERNAME" not in HF_REPO_ID, "Set os.environ['HF_REPO_ID'] before running"
 # ─────────────────────────────────────────────────────────────────────────────
 
 import re
