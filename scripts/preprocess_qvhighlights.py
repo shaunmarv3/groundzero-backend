@@ -1,0 +1,178 @@
+"""
+preprocess_qvhighlights.py — One-time QVHighlights frame extraction.
+Phase 2.1
+
+Run this in a Colab CPU session (NOT locally — needs internet + disk space).
+
+Setup in Colab:
+    !git clone https://github.com/YOUR_USERNAME/groundzero.git
+    %cd groundzero/groundzero-backend
+    !pip install -r requirements.txt datasets huggingface_hub
+
+Change START_IDX / END_IDX for each session:
+    Session 1: START_IDX = 0,    END_IDX = 2945
+    Session 2: START_IDX = 2945, END_IDX = 5890
+    Session 3: START_IDX = 5890, END_IDX = None
+
+Source datasets:
+    Annotations : jwnt4/qvhighlights-50frames  (vid, query, relevant_windows)
+    Videos      : ayushsdev/qvhighlights-videos (MP4s matched by vid filename)
+
+Output:
+    /content/qvhighlights_frames/{vid}/{ts:08.3f}.jpg   (384x384 JPEGs, 1fps)
+    /content/annotations_train.jsonl                    (one JSON per video)
+    Uploaded to HF_REPO_ID on HuggingFace every UPLOAD_EVERY videos.
+"""
+
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# ── Edit these for each session ───────────────────────────────────────────────
+START_IDX    = 0
+END_IDX      = 2945       # set to None for the last session
+HF_REPO_ID   = "YOUR_USERNAME/qvhighlights-1fps"  # create this repo on HF first
+HF_TOKEN     = "hf_YOUR_TOKEN_HERE"
+FRAMES_ROOT  = "/content/qvhighlights_frames"
+JSONL_PATH   = "/content/annotations_train.jsonl"
+FPS          = 1.0
+FRAME_SIZE   = (384, 384)
+UPLOAD_EVERY = 200        # checkpoint to HuggingFace every N completed videos
+# ─────────────────────────────────────────────────────────────────────────────
+
+import re
+import json
+import requests
+from pathlib import Path
+
+from datasets import load_dataset
+from huggingface_hub import HfApi
+from PIL import Image
+
+from app.pipeline.frame_extractor import extract_frames
+
+Path(FRAMES_ROOT).mkdir(parents=True, exist_ok=True)
+api = HfApi()
+
+
+def _extract_query(conversations: list) -> str:
+    content = conversations[0]["content"]
+    m = re.search(r'\*\*Activity\*\*: (.+?)\n', content)
+    return m.group(1).strip() if m else ""
+
+
+def _get_gt_span(relevant_windows: list) -> tuple:
+    starts = [w[0] for w in relevant_windows]
+    ends   = [w[1] for w in relevant_windows]
+    return float(min(starts)), float(max(ends))
+
+
+def _download_mp4(vid: str, save_path: Path) -> bool:
+    url = (
+        f"https://huggingface.co/datasets/ayushsdev/qvhighlights-videos"
+        f"/resolve/main/{vid[0]}/{vid}.mp4"
+    )
+    r = requests.get(url, stream=True, timeout=60)
+    if r.status_code != 200:
+        return False
+    with open(save_path, "wb") as f:
+        for chunk in r.iter_content(chunk_size=65536):
+            f.write(chunk)
+    return True
+
+
+def _upload_checkpoint():
+    print("  Uploading checkpoint to HuggingFace...", flush=True)
+    api.upload_folder(
+        folder_path=FRAMES_ROOT,
+        repo_id=HF_REPO_ID,
+        repo_type="dataset",
+        path_in_repo="frames",
+        token=HF_TOKEN,
+    )
+    api.upload_file(
+        path_or_fileobj=JSONL_PATH,
+        path_in_repo="annotations_train.jsonl",
+        repo_id=HF_REPO_ID,
+        repo_type="dataset",
+        token=HF_TOKEN,
+    )
+    print("  Checkpoint uploaded ✓", flush=True)
+
+
+# ── Load annotations (text only — no image pixels in this dataset) ────────────
+print("Loading annotations from jwnt4/qvhighlights-50frames...")
+ds      = load_dataset("jwnt4/qvhighlights-50frames", split="train", streaming=True)
+samples = list(ds)
+print(f"Total samples: {len(samples)}")
+
+chunk = samples[START_IDX : END_IDX]
+print(f"Processing {len(chunk)} videos (indices {START_IDX}–{END_IDX or len(samples)})")
+
+# ── Main processing loop ──────────────────────────────────────────────────────
+done    = 0
+skipped = 0
+
+with open(JSONL_PATH, "a", encoding="utf-8") as jsonl_f:
+    for i, sample in enumerate(chunk):
+        vid     = sample["vid"]
+        tmp_mp4 = Path(f"/tmp/{vid}.mp4")
+
+        try:
+            query = _extract_query(sample["conversations"])
+            if not query:
+                skipped += 1
+                continue
+
+            gt_start_sec, gt_end_sec = _get_gt_span(sample["relevant_windows"])
+            duration = float(sample["duration"])
+
+            # 1. Download MP4 (~8MB, deleted immediately after extraction)
+            if not _download_mp4(vid, tmp_mp4):
+                print(f"  [SKIP] download failed: {vid}")
+                skipped += 1
+                continue
+
+            # 2. Extract 1fps frames
+            frames_data = extract_frames(tmp_mp4, fps=FPS)
+            tmp_mp4.unlink(missing_ok=True)
+
+            if not frames_data:
+                skipped += 1
+                continue
+
+            # 3. Save as 384×384 JPEGs, filename = timestamp
+            frame_dir = Path(FRAMES_ROOT) / vid
+            frame_dir.mkdir(exist_ok=True)
+            timestamps = []
+            for ts, img in frames_data:
+                img.resize(FRAME_SIZE, Image.LANCZOS).save(
+                    frame_dir / f"{ts:08.3f}.jpg", quality=85
+                )
+                timestamps.append(ts)
+
+            # 4. Write annotation
+            jsonl_f.write(json.dumps({
+                "vid":          vid,
+                "query":        query,
+                "duration":     duration,
+                "gt_start_sec": gt_start_sec,
+                "gt_end_sec":   gt_end_sec,
+                "n_frames":     len(timestamps),
+            }) + "\n")
+            jsonl_f.flush()
+
+            done += 1
+            if done % 50 == 0:
+                print(f"  [{done}/{len(chunk)}] done={done}  skipped={skipped}",
+                      flush=True)
+
+            if done % UPLOAD_EVERY == 0:
+                _upload_checkpoint()
+
+        except Exception as e:
+            print(f"  [ERROR] {vid}: {e}")
+            tmp_mp4.unlink(missing_ok=True)
+            skipped += 1
+
+_upload_checkpoint()
+print(f"\nFinished. done={done}  skipped={skipped}")
