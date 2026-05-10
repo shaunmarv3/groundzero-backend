@@ -45,7 +45,7 @@ FRAMES_ROOT  = os.environ.get("FRAMES_ROOT",  "/content/hf_upload/frames")
 JSONL_PATH   = os.environ.get("JSONL_PATH",   "/content/annotations_train.jsonl")
 FPS          = float(os.environ.get("FPS",    "1.0"))
 FRAME_SIZE   = (384, 384)
-UPLOAD_EVERY = int(os.environ.get("UPLOAD_EVERY", "100"))
+UPLOAD_EVERY = int(os.environ.get("UPLOAD_EVERY", "100"))  # unused — upload manually
 
 assert HF_TOKEN, "Set os.environ['HF_TOKEN'] before running"
 assert "YOUR_USERNAME" not in HF_REPO_ID, "Set os.environ['HF_REPO_ID'] before running"
@@ -202,20 +202,17 @@ with open(JSONL_PATH, "a", encoding="utf-8") as jsonl_f:
             jsonl_f.flush()
 
             done += 1
-            batch_vids.append(vid)
 
             if done % 50 == 0:
                 print(f"  [{done}/{len(chunk)}] done={done}  skipped={skipped}",
                       flush=True)
-
-            if done % UPLOAD_EVERY == 0:
-                _upload_checkpoint(batch_vids)
-                batch_vids = []   # reset — only upload NEW ones next time
 
         except Exception as e:
             print(f"  [ERROR] {vid}: {e}")
             tmp_mp4.unlink(missing_ok=True)
             skipped += 1
 
-_upload_checkpoint(batch_vids)   # final upload of remaining videos
 print(f"\nFinished. done={done}  skipped={skipped}")
+print(f"Frames at: {FRAMES_ROOT}")
+print(f"JSONL at:  {JSONL_PATH}")
+print("Run the Upload cell when ready.")
