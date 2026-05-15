@@ -78,18 +78,33 @@ def _get_gt_span(relevant_windows: list) -> tuple:
     return float(min(starts)), float(max(ends))
 
 
-def _download_mp4(vid: str, save_path: Path) -> bool:
-    url = (
-        f"https://huggingface.co/datasets/ayushsdev/qvhighlights-videos"
-        f"/resolve/main/{vid[0].lower()}/{vid}.mp4"
-    )
-    r = requests.get(url, stream=True, timeout=60)
-    if r.status_code != 200:
+def _is_valid_mp4(path: Path) -> bool:
+    try:
+        with open(path, "rb") as f:
+            header = f.read(12)
+        return len(header) >= 8 and header[4:8] in (b"ftyp", b"moov", b"mdat", b"free")
+    except Exception:
         return False
-    with open(save_path, "wb") as f:
-        for chunk in r.iter_content(chunk_size=65536):
-            f.write(chunk)
-    return True
+
+
+def _download_mp4(vid: str, save_path: Path) -> bool:
+    youtube_id = vid.split("_")[0]
+    first_char = youtube_id[0].lower()
+    candidate_urls = [
+        f"https://huggingface.co/datasets/ayushsdev/qvhighlights-videos/resolve/main/{first_char}/{vid}.mp4",
+        f"https://huggingface.co/datasets/ayushsdev/qvhighlights-videos/resolve/main/{vid}.mp4",
+    ]
+    for url in candidate_urls:
+        r = requests.get(url, stream=True, timeout=60)
+        if r.status_code != 200:
+            continue
+        with open(save_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=65536):
+                f.write(chunk)
+        if _is_valid_mp4(save_path):
+            return True
+        save_path.unlink(missing_ok=True)
+    return False
 
 
 def _upload_checkpoint(new_vids: list):
