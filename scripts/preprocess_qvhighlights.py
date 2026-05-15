@@ -201,7 +201,7 @@ with open(JSONL_PATH, "a", encoding="utf-8") as jsonl_f:
             timestamps = []
             for ts, img in frames_data:
                 img.resize(FRAME_SIZE, Image.LANCZOS).save(
-                    frame_dir / f"{ts:08.3f}.jpg", quality=85
+                    frame_dir / f"{ts:08.3f}.jpg"
                 )
                 timestamps.append(ts)
 
