@@ -22,7 +22,8 @@ from app.pipeline.text_encoder import TextEncoder
 from app.pipeline.temporal_context import TemporalContextModule
 from app.pipeline.cross_modal_transformer import CrossModalTransformer
 from app.pipeline.span_extraction import SpanExtractionHead, decode_best_span, to_seconds
-from app.pipeline.frame_extractor import extract_frames, get_video_metadata
+# frame_extractor requires ffmpeg — only needed for inference (predict/run_pass), not training
+# imported lazily inside predict() so training environments without ffmpeg still work
 
 
 class GroundZeroModel(nn.Module):
@@ -119,6 +120,7 @@ class GroundZeroModel(nn.Module):
                 found        (bool):  confidence >= threshold
                 coarse       (dict):  coarse pass result { start_sec, end_sec }
         """
+        from app.pipeline.frame_extractor import get_video_metadata, extract_frames  # noqa: lazy
         video_path = Path(video_path)
         meta = get_video_metadata(video_path)
         duration = meta["duration"]
@@ -163,6 +165,7 @@ class GroundZeroModel(nn.Module):
         max_frames: int | None = 512,
     ) -> tuple:
         """Extract frames, encode, run forward, decode span. Returns (start_sec, end_sec, confidence)."""
+        from app.pipeline.frame_extractor import extract_frames  # noqa: lazy
         frames_data = extract_frames(video_path, fps=fps, start_sec=start_sec, end_sec=end_sec, max_frames=max_frames)
         if not frames_data:
             return start_sec, end_sec or duration, 0.0
