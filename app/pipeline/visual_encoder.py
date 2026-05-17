@@ -42,6 +42,11 @@ class VisualEncoder(nn.Module):
 
         full_model = AutoModel.from_pretrained(model_id)
 
+        # Gradient checkpointing: recomputes activations during backward instead of
+        # storing all 27 layers simultaneously. Cuts activation memory from ~7 GB to
+        # ~500 MB for 150-frame videos — essential for training on T4 (16 GB VRAM).
+        full_model.vision_model.encoder.gradient_checkpointing = True
+
         # Freeze text tower — visual_encoder.py only handles the vision side
         for param in full_model.text_model.parameters():
             param.requires_grad = False
@@ -58,6 +63,8 @@ class VisualEncoder(nn.Module):
             bias="none",
         )
         full_model.vision_model = get_peft_model(full_model.vision_model, lora_config)
+        # Required for gradient checkpointing to work with PEFT
+        full_model.vision_model.enable_input_require_grads()
 
         self.model = full_model.to(device)
 
