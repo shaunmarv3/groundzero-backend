@@ -48,52 +48,41 @@ def temporal_jitter(
 # 2. Random Temporal Crop
 # ---------------------------------------------------------------------------
 
-def random_temporal_crop(
-    frames: List[Image.Image],
-    timestamps: List[float],
-    gt_start_sec: float,
-    gt_end_sec: float,
-    min_frac: float = 0.6,
-    margin_sec: float = 5.0,
-) -> Tuple[List[Image.Image], List[float], float, float]:
-    """
-    Crop the frame list to a random 60–100% window of the original video.
-    The GT segment is always fully inside the crop (guaranteed by margin_sec buffer).
-
-    Returns (cropped_frames, cropped_timestamps, gt_start_sec, gt_end_sec).
-    GT boundaries are in absolute seconds and stay unchanged — only the frame
-    list and timestamp list shrink.
-
-    Why: changes the relative position of the event inside the input sequence,
-    forcing the model to generalise rather than rely on absolute position.
-    """
-    if not timestamps:
-        return frames, timestamps, gt_start_sec, gt_end_sec
-
-    duration = timestamps[-1]
-
-    # Crop start must be before (gt_start - margin), crop end after (gt_end + margin)
-    latest_crop_start  = max(0.0, gt_start_sec - margin_sec)
-    earliest_crop_end  = min(duration, gt_end_sec + margin_sec)
-
-    # Crop must span at least min_frac of total video
-    min_crop_dur = duration * min_frac
-
-    crop_start = random.uniform(0.0, latest_crop_start)
-    crop_end_lower = max(earliest_crop_end, crop_start + min_crop_dur)
-    crop_end = random.uniform(crop_end_lower, duration) if crop_end_lower <= duration else duration
-
-    cropped = [
-        (ts, img) for ts, img in zip(timestamps, frames)
-        if crop_start <= ts <= crop_end
-    ]
-
-    if not cropped:
-        return frames, timestamps, gt_start_sec, gt_end_sec
-
-    c_frames     = [img for _, img in cropped]
-    c_timestamps = [ts  for ts, _ in cropped]
-    return c_frames, c_timestamps, gt_start_sec, gt_end_sec
+# DISABLED for first training run.
+# Why: this crop makes videos in the same batch start at different seconds
+# (e.g. Video A starts at second 0, Video B starts at second 15). That means
+# each video needs its own timestamps list — complicates the training loop.
+# All QVHighlights videos are already 150 frames at 1fps, so every batch has
+# the same length anyway. No benefit to enabling this yet.
+# Re-enable after baseline is confirmed working (Phase 6+).
+#
+# def random_temporal_crop(
+#     frames: List[Image.Image],
+#     timestamps: List[float],
+#     gt_start_sec: float,
+#     gt_end_sec: float,
+#     min_frac: float = 0.6,
+#     margin_sec: float = 5.0,
+# ) -> Tuple[List[Image.Image], List[float], float, float]:
+#     """
+#     Crop the frame list to a random 60-100% window of the original video.
+#     The GT segment is always fully inside the crop (guaranteed by margin_sec buffer).
+#     """
+#     if not timestamps:
+#         return frames, timestamps, gt_start_sec, gt_end_sec
+#     duration = timestamps[-1]
+#     latest_crop_start  = max(0.0, gt_start_sec - margin_sec)
+#     earliest_crop_end  = min(duration, gt_end_sec + margin_sec)
+#     min_crop_dur = duration * min_frac
+#     crop_start = random.uniform(0.0, latest_crop_start)
+#     crop_end_lower = max(earliest_crop_end, crop_start + min_crop_dur)
+#     crop_end = random.uniform(crop_end_lower, duration) if crop_end_lower <= duration else duration
+#     cropped = [(ts, img) for ts, img in zip(timestamps, frames) if crop_start <= ts <= crop_end]
+#     if not cropped:
+#         return frames, timestamps, gt_start_sec, gt_end_sec
+#     c_frames     = [img for _, img in cropped]
+#     c_timestamps = [ts  for ts, _ in cropped]
+#     return c_frames, c_timestamps, gt_start_sec, gt_end_sec
 
 
 # ---------------------------------------------------------------------------

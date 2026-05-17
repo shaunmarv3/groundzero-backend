@@ -24,7 +24,7 @@ from PIL import Image
 
 from app.training.augmentation import (
     temporal_jitter,
-    random_temporal_crop,
+    # random_temporal_crop,  # disabled — see augmentation.py for why
     speed_perturbation,
     load_paraphrases,
     sample_paraphrase,
@@ -85,9 +85,10 @@ class GroundingDataset(Dataset):
             gt_start_sec, gt_end_sec = temporal_jitter(
                 gt_start_sec, gt_end_sec, duration
             )
-            frames, timestamps, gt_start_sec, gt_end_sec = random_temporal_crop(
-                frames, timestamps, gt_start_sec, gt_end_sec
-            )
+            # random_temporal_crop disabled — see augmentation.py for why
+            # frames, timestamps, gt_start_sec, gt_end_sec = random_temporal_crop(
+            #     frames, timestamps, gt_start_sec, gt_end_sec
+            # )
             frames, timestamps = speed_perturbation(frames, timestamps)
             query = sample_paraphrase(query, self.paraphrases)
             query, is_negative = maybe_inject_negative_query(query, self.all_queries)
