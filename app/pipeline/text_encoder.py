@@ -24,25 +24,30 @@ class TextEncoder(nn.Module):
 
     Trainable: 0 params (text queries need no video-specific adaptation)
     Frozen:    entire SigLIP 2 backbone
+
+    Pass shared_model to reuse an already-loaded backbone (e.g. from VisualEncoder)
+    so GroundZeroModel doesn't load SigLIP 2 twice into VRAM.
     """
 
     def __init__(
         self,
         model_id: str = "google/siglip2-so400m-patch14-384",
         device: str = "cuda",
+        shared_model=None,
     ):
         super().__init__()
         self.device = device
 
         self.processor = AutoProcessor.from_pretrained(model_id)
 
-        full_model = AutoModel.from_pretrained(model_id)
-
-        # Freeze everything — text encoder is fully static during training
-        for param in full_model.parameters():
-            param.requires_grad = False
-
-        self.model = full_model.to(device)
+        if shared_model is not None:
+            # Reuse already-loaded backbone — saves ~1.1 GB VRAM in GroundZeroModel
+            self.model = shared_model
+        else:
+            full_model = AutoModel.from_pretrained(model_id)
+            for param in full_model.parameters():
+                param.requires_grad = False
+            self.model = full_model.to(device)
 
     def encode_query(self, query: str) -> torch.Tensor:
         """

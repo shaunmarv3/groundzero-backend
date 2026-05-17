@@ -88,7 +88,8 @@ def _is_valid_mp4(path: Path) -> bool:
 
 
 def _download_mp4(vid: str, save_path: Path) -> bool:
-    youtube_id = vid.split("_")[0]
+    parts = vid.split("_")
+    youtube_id = parts[0] if parts[0] else "_" + parts[1]
     first_char = youtube_id[0].lower()
     candidate_urls = [
         f"https://huggingface.co/datasets/ayushsdev/qvhighlights-videos/resolve/main/{first_char}/{vid}.mp4",

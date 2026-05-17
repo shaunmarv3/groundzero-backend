@@ -63,10 +63,18 @@ class TemporalContextModule(nn.Module):
 
     def forward(self, x: torch.Tensor, timestamps: torch.Tensor) -> torch.Tensor:
         # x:          (B, N, d_model) — frame embeddings from visual encoder
-        # timestamps: (N,)            — fractional positions t/T in [0, 1]
+        # timestamps: (N,) or (B, N)  — fractional positions t/T in [0, 1]
+        #             (N,)   → same timestamps for all samples (backward-compat / inference)
+        #             (B, N) → per-sample timestamps (training with variable-length videos)
         # returns:    (B, N, d_model)
 
-        x = x + self.pos_enc(timestamps)  # inject position info
+        if timestamps.dim() == 1:
+            pe = self.pos_enc(timestamps)  # (N, d_model) — broadcasts over B
+        else:
+            # per-sample: loop is tiny (B ≤ 4 in training)
+            pe = torch.stack([self.pos_enc(timestamps[i]) for i in range(timestamps.shape[0])])
+
+        x = x + pe  # inject position info
 
         for conv, norm in zip(self.convs, self.norms):
             residual = x                      # (B, N, d_model)

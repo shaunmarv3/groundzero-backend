@@ -58,7 +58,8 @@ class GroundZeroModel(nn.Module):
 
         self.visual_encoder   = VisualEncoder(model_id, lora_rank, lora_alpha, lora_layers, device)
         self.temporal_context = TemporalContextModule(d_model).to(device)
-        self.text_encoder     = TextEncoder(model_id, device)
+        # Share the already-loaded SigLIP 2 backbone — avoids loading 1.1 GB twice
+        self.text_encoder     = TextEncoder(model_id, device, shared_model=self.visual_encoder.model)
         self.cross_modal      = CrossModalTransformer(d_model, n_heads, n_layers, dropout).to(device)
         self.span_head        = SpanExtractionHead(d_model, dropout).to(device)
 
