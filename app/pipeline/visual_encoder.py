@@ -61,19 +61,28 @@ class VisualEncoder(nn.Module):
 
         self.model = full_model.to(device)
 
-    def encode_frames(self, frames: list) -> torch.Tensor:
+    def encode_frames(self, frames: list, chunk_size: int = 8) -> torch.Tensor:
         """
         Encode a list of PIL Images into frame embeddings.
 
+        Processes frames in chunks to avoid OOM — encoding all 150 frames at once
+        creates 150×729 patches × 27 layers of activations which exceeds T4 VRAM.
+        chunk_size=8 keeps peak activation memory ~200 MB per chunk.
+
         Args:
-            frames : list of PIL.Image — any size, processor handles resize+normalise
+            frames     : list of PIL.Image
+            chunk_size : frames processed at once (lower = less VRAM, more steps)
 
         Returns:
             Tensor (N, 1152) — one 1152-d vector per frame
         """
-        inputs = self.processor(images=frames, return_tensors="pt").to(self.device)
-        features = self.model.get_image_features(**inputs)  # (N, 1152)
-        return features
+        all_features = []
+        for i in range(0, len(frames), chunk_size):
+            chunk = frames[i : i + chunk_size]
+            inputs = self.processor(images=chunk, return_tensors="pt").to(self.device)
+            features = self.model.get_image_features(**inputs)  # (chunk, 1152)
+            all_features.append(features)
+        return torch.cat(all_features, dim=0)  # (N, 1152)
 
     def count_params(self) -> dict:
         """Return trainable vs total parameter counts."""
