@@ -21,8 +21,8 @@ torchvision==0.18.0
 torchaudio==2.3.0
 
 # ------ Transformers & CLIP ----------------------------------
-transformers==4.41.1
-peft==0.11.1                   # LoRA adapters for SigLIP 2 fine-tuning
+transformers>=4.49.0           # 4.49+ required for SigLIP 2 support
+peft>=0.18.0                   # LoRA adapters for SigLIP 2 fine-tuning
 einops==0.8.0                  # clean tensor manipulation for attention layers
 open-clip-torch==2.24.0        # alternative CLIP loader (fallback)
 
