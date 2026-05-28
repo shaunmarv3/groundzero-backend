@@ -63,7 +63,12 @@ class VisualEncoder(nn.Module):
             bias="none",
         )
         full_model.vision_model = get_peft_model(full_model.vision_model, lora_config)
-        # Required for gradient checkpointing to work with PEFT
+        # enable_gradient_checkpointing() re-sets the flag on the wrapped model via PEFT's
+        # proper API — more reliable than setting the attribute before wrapping alone.
+        full_model.vision_model.enable_gradient_checkpointing()
+        # Required for gradient checkpointing to work through frozen PEFT layers:
+        # makes the frozen backbone forward pass retain an input that requires grad,
+        # so autograd can traverse the graph back into the LoRA adapters.
         full_model.vision_model.enable_input_require_grads()
 
         self.model = full_model.to(device)
