@@ -339,6 +339,8 @@ def parse_args():
 
     # Training
     p.add_argument("--batch_size",   type=int,   default=8)
+    p.add_argument("--grad_accum",   type=int,   default=1,
+                   help="Gradient accumulation steps. effective_batch = batch_size × grad_accum")
     p.add_argument("--lr",           type=float, default=1e-4)
     p.add_argument("--epochs",       type=int,   default=20)
     p.add_argument("--warmup_steps", type=int,   default=500)
@@ -438,11 +440,14 @@ def main():
         ],
         lr=args.lr,
     )
-    total_steps = len(train_loader) * args.epochs
+    # total_steps = optimizer steps (not batch steps) — grad_accum reduces update frequency
+    total_steps = (len(train_loader) // args.grad_accum) * args.epochs
     scheduler   = get_cosine_schedule_with_warmup(optimizer, args.warmup_steps, total_steps)
     scaler      = torch.cuda.amp.GradScaler()
 
     print(f"AdamW lr={args.lr}  |  cosine warmup={args.warmup_steps} / {total_steps} steps")
+    print(f"batch_size={args.batch_size}  grad_accum={args.grad_accum}  "
+          f"effective_batch={args.batch_size * args.grad_accum}")
 
     # ── Resume ────────────────────────────────────────────────────────────────
     start_epoch = 1
@@ -496,11 +501,15 @@ def main():
             break
 
         model.train()
-        epoch_loss = 0.0
-        n_batches  = 0
+        epoch_loss  = 0.0
+        n_updates   = 0
         epoch_start = time.time()
 
-        for batch in train_loader:
+        # accumulators for logging — track the unscaled loss across accum steps
+        accum_loss = accum_span = accum_iou = accum_cont = accum_conf = 0.0
+        optimizer.zero_grad()
+
+        for batch_idx, batch in enumerate(train_loader):
 
             # Intra-epoch time check: stop with 3% buffer so we have time to save
             if args.max_hours:
@@ -515,7 +524,8 @@ def main():
                     run.finish()
                     return
 
-            optimizer.zero_grad()
+            is_last_batch = (batch_idx + 1 == len(train_loader))
+            do_update     = ((batch_idx + 1) % args.grad_accum == 0) or is_last_batch
 
             with torch.cuda.amp.autocast():
                 frame_embs, timestamps, query_emb = encode_batch(model, batch, DEVICE)
@@ -538,40 +548,69 @@ def main():
                 conf_targets = torch.where(
                     is_neg, torch.zeros_like(confidence), torch.ones_like(confidence)
                 )
-                conf_l = F.binary_cross_entropy(confidence, conf_targets)
-                loss   = total_l + conf_l
+                # BCE requires fp32 — autocast does NOT auto-cast it safely
+                conf_l = F.binary_cross_entropy(confidence.float(), conf_targets.float())
+                # divide by grad_accum so gradients average (not sum) across accum steps
+                loss   = (total_l + conf_l) / args.grad_accum
 
             scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(
-                [p for p in model.parameters() if p.requires_grad], args.clip_grad
-            )
-            scaler.step(optimizer)
-            scaler.update()
-            scheduler.step()
 
-            epoch_loss  += loss.item()
-            n_batches   += 1
-            global_step += 1
+            # accumulate for logging (store unscaled values)
+            accum_loss += (total_l + conf_l).item()
+            accum_span += span_l.item()
+            accum_iou  += iou_l.item()
+            accum_cont += cont_l.item()
+            accum_conf += conf_l.item()
 
-            if global_step % args.log_every == 0:
-                metrics = {
-                    "train/loss":      loss.item(),
-                    "train/span_loss": span_l.item(),
-                    "train/iou_loss":  iou_l.item(),
-                    "train/cont_loss": cont_l.item(),
-                    "train/conf_loss": conf_l.item(),
-                    "train/lr":        scheduler.get_last_lr()[0],
-                }
-                wandb.log(metrics, step=global_step)
-                print(
-                    f"ep {epoch:02d}  step {global_step:05d}  "
-                    f"loss={loss.item():.4f}  span={span_l.item():.4f}  "
-                    f"iou={iou_l.item():.4f}  lr={scheduler.get_last_lr()[0]:.2e}"
+            if do_update:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    [p for p in model.parameters() if p.requires_grad], args.clip_grad
                 )
+                scaler.step(optimizer)
+                scaler.update()
+                scheduler.step()
+                optimizer.zero_grad()
+
+                n_steps_this_window = min(args.grad_accum, batch_idx + 1 - n_updates * args.grad_accum)
+                epoch_loss  += accum_loss / max(n_steps_this_window, 1)
+                n_updates   += 1
+                global_step += 1
+
+                if global_step % args.log_every == 0:
+                    metrics = {
+                        "train/loss":      accum_loss / max(n_steps_this_window, 1),
+                        "train/span_loss": accum_span / max(n_steps_this_window, 1),
+                        "train/iou_loss":  accum_iou  / max(n_steps_this_window, 1),
+                        "train/cont_loss": accum_cont / max(n_steps_this_window, 1),
+                        "train/conf_loss": accum_conf / max(n_steps_this_window, 1),
+                        "train/lr":        scheduler.get_last_lr()[0],
+                    }
+                    wandb.log(metrics, step=global_step)
+
+                    # ETA: time-per-update × (updates left this epoch + remaining epochs)
+                    elapsed_epoch    = time.time() - epoch_start
+                    time_per_update  = elapsed_epoch / max(n_updates, 1)
+                    updates_per_epoch = max(len(train_loader) // args.grad_accum, 1)
+                    updates_left_epoch = updates_per_epoch - n_updates
+                    epochs_left      = args.epochs - epoch           # complete future epochs
+                    eta_secs = (updates_left_epoch + epochs_left * updates_per_epoch) * time_per_update
+                    eta_h, eta_rem = divmod(int(eta_secs), 3600)
+                    eta_m = eta_rem // 60
+
+                    print(
+                        f"ep {epoch:02d}/{args.epochs}  step {global_step:05d}  "
+                        f"loss={metrics['train/loss']:.4f}  "
+                        f"span={metrics['train/span_loss']:.4f}  "
+                        f"iou={metrics['train/iou_loss']:.4f}  "
+                        f"lr={metrics['train/lr']:.2e}  "
+                        f"ETA {eta_h}h{eta_m:02d}m"
+                    )
+
+                accum_loss = accum_span = accum_iou = accum_cont = accum_conf = 0.0
 
         epoch_mins = (time.time() - epoch_start) / 60
-        avg_loss   = epoch_loss / max(n_batches, 1)
+        avg_loss   = epoch_loss / max(n_updates, 1)
         print(f"\n--- Epoch {epoch:02d}  avg_loss={avg_loss:.4f}  time={epoch_mins:.1f} min ---")
 
         # ── Validate ──────────────────────────────────────────────────────────
