@@ -49,6 +49,7 @@ import argparse
 import os
 import sys
 import tarfile
+import threading
 import time
 from pathlib import Path
 
@@ -110,6 +111,19 @@ def download_dataset(data_dir: Path) -> tuple:
         print("  First 1 000 train vids: already present, skipping")
     else:
         print("  Downloading first 1 000 train vids (individual JPEGs)...")
+        print("  (download + file-copy for ~150k JPEGs takes several minutes)")
+
+        # Background thread: counts video dirs copied so far and prints every 15s
+        _stop = threading.Event()
+        def _watch():
+            while not _stop.is_set():
+                n = sum(1 for x in frames_dir.iterdir() if x.is_dir()) if frames_dir.exists() else 0
+                print(f"\r  Video dirs copied so far: {n} / ~1000", end="", flush=True)
+                _stop.wait(timeout=15)
+            print()  # newline after final update
+        _t = threading.Thread(target=_watch, daemon=True)
+        _t.start()
+
         snapshot_download(
             DATASET_ID,
             repo_type="dataset",
@@ -117,8 +131,12 @@ def download_dataset(data_dir: Path) -> tuple:
             local_dir=str(data_dir),
             local_dir_use_symlinks=False,
         )
+
+        _stop.set()
+        _t.join()
         sentinel.touch()
-        print("  First batch done.")
+        n_final = sum(1 for x in frames_dir.iterdir() if x.is_dir())
+        print(f"  First batch done — {n_final} video dirs")
 
     # Train tar files (vids 1 000–7 445)
     for tar_name in TRAIN_TARS:
