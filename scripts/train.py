@@ -181,10 +181,15 @@ def download_dataset(data_dir: Path) -> tuple:
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def encode_batch(model, batch, device, d_model=1152):
+def encode_batch(model, batch, device, d_model=1152, chunk_size=8):
     """
     Encode one batch of PIL frame lists + query strings → tensors.
     Must be called inside torch.cuda.amp.autocast() so SigLIP runs in fp16.
+
+    All frames across the B videos are flattened into ONE list and encoded
+    together in chunks of `chunk_size`. This feeds the GPU big kernels instead
+    of B separate per-video passes of 8 frames each — far better SM occupancy
+    on an H100/A100. Embeddings are then split back per-video using frame counts.
 
     Returns:
         frame_embs : (B, N_max, d_model)  float32, padded with zeros
@@ -192,20 +197,33 @@ def encode_batch(model, batch, device, d_model=1152):
         query_emb  : (B, 1, d_model)      float32
     """
     B = len(batch["frames"])
-    emb_list, ts_list = [], []
 
+    # Flatten all frames across the batch, remember each video's frame count
+    all_frames, counts = [], []
     for i in range(B):
-        emb_i = model.visual_encoder.encode_frames(batch["frames"][i])   # (N_i, D)
+        frames_i = batch["frames"][i]
+        all_frames.extend(frames_i)
+        counts.append(len(frames_i))
+
+    # One batched encode for the whole batch (sum(counts) frames)
+    all_embs = model.visual_encoder.encode_frames(all_frames, chunk_size=chunk_size)
+
+    # Split back per-video and build the fractional-timestamp tensors
+    emb_list, ts_list = [], []
+    offset = 0
+    for i in range(B):
+        n = counts[i]
+        emb_list.append(all_embs[offset:offset + n].float())
+        offset += n
         dur_i = batch["duration"][i].item()
         frac_i = torch.tensor(
             [t / dur_i for t in batch["timestamps"][i]],
             dtype=torch.float32,
             device=device,
         )
-        emb_list.append(emb_i.float())
         ts_list.append(frac_i)
 
-    N_max      = max(e.shape[0] for e in emb_list)
+    N_max      = max(counts)
     frame_embs = torch.zeros(B, N_max, d_model, device=device)
     timestamps = torch.ones(B, N_max, device=device)   # 1.0 = end-of-video pad position
 
@@ -291,14 +309,14 @@ def _push(ckpt_path: Path, hf_repo: str, api: HfApi):
 
 
 @torch.no_grad()
-def validate(model, val_loader, device):
+def validate(model, val_loader, device, chunk_size=8):
     model.eval()
     hits_05 = hits_07 = total = 0
     val_loss_sum = 0.0
 
     for batch in val_loader:
         with torch.cuda.amp.autocast():
-            frame_embs, timestamps, query_emb = encode_batch(model, batch, device)
+            frame_embs, timestamps, query_emb = encode_batch(model, batch, device, chunk_size=chunk_size)
             start_logits, end_logits, confidence = model(frame_embs, timestamps, query_emb)
 
         for i in range(start_logits.shape[0]):
@@ -366,6 +384,10 @@ def parse_args():
     p.add_argument("--log_every",    type=int,   default=50)
     p.add_argument("--max_hours",    type=float, default=None,
                    help="Stop cleanly after this many hours (e.g. 5.5 for a 6-hour session)")
+    p.add_argument("--chunk_size",   type=int,   default=8,
+                   help="Frames per SigLIP forward pass. 8 for T4/Colab, 64 for H100/A100")
+    p.add_argument("--num_workers",  type=int,   default=4,
+                   help="DataLoader workers (JPEG decode). 2 on Colab, 8-12 on H100")
 
     # Model
     p.add_argument("--lora_rank",  type=int,   default=8)
@@ -418,11 +440,13 @@ def main():
     val_ds   = GroundingDataset(val_jsonl,   frames_dir, augment=False)
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True,
-        collate_fn=collate_fn, num_workers=4, pin_memory=True, persistent_workers=True,
+        collate_fn=collate_fn, num_workers=args.num_workers, pin_memory=True,
+        persistent_workers=(args.num_workers > 0),
     )
     val_loader = DataLoader(
         val_ds, batch_size=args.batch_size, shuffle=False,
-        collate_fn=collate_fn, num_workers=4, pin_memory=True, persistent_workers=True,
+        collate_fn=collate_fn, num_workers=args.num_workers, pin_memory=True,
+        persistent_workers=(args.num_workers > 0),
     )
     print(f"\nTrain: {len(train_ds):,} samples / {len(train_loader):,} batches")
     print(f"Val:   {len(val_ds):,} samples / {len(val_loader):,} batches")
@@ -465,7 +489,7 @@ def main():
 
     print(f"AdamW lr={args.lr}  |  cosine warmup={args.warmup_steps} / {total_steps} steps")
     print(f"batch_size={args.batch_size}  grad_accum={args.grad_accum}  "
-          f"effective_batch={args.batch_size * args.grad_accum}")
+          f"effective_batch={args.batch_size * args.grad_accum}  chunk_size={args.chunk_size}")
 
     # ── Resume ────────────────────────────────────────────────────────────────
     start_epoch = 1
@@ -546,7 +570,7 @@ def main():
             do_update     = ((batch_idx + 1) % args.grad_accum == 0) or is_last_batch
 
             with torch.cuda.amp.autocast():
-                frame_embs, timestamps, query_emb = encode_batch(model, batch, DEVICE)
+                frame_embs, timestamps, query_emb = encode_batch(model, batch, DEVICE, chunk_size=args.chunk_size)
                 start_logits, end_logits, confidence = model(frame_embs, timestamps, query_emb)
 
                 gt_start = batch["gt_start_idx"].to(DEVICE)
@@ -633,7 +657,7 @@ def main():
 
         # ── Validate ──────────────────────────────────────────────────────────
         print("  Validating...")
-        vm = validate(model, val_loader, DEVICE)
+        vm = validate(model, val_loader, DEVICE, chunk_size=args.chunk_size)
         wandb.log({**vm, "epoch": epoch}, step=global_step)
         print(
             f"  Val  R@1 IoU=0.5: {vm['val/r1_iou05']:.4f}  "
