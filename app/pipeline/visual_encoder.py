@@ -5,7 +5,10 @@ Phase 3.2 (Chunk D).
 Architecture:
   Backbone : SigLIP 2 So400m (google/siglip2-so400m-patch14-384)
              ~0.9B params, 1152-d embeddings, 27 transformer blocks
-             Loaded in float32 — 16 GB VRAM handles this comfortably.
+             Loaded in float16 (frozen) so the backbone + activation graph fit a
+             16 GB GPU. Compute already runs in fp16 under autocast, so numerics
+             are unchanged; only the LoRA adapters are kept in fp32 (for stable
+             optimisation) — see __init__.
   Adapters : LoRA on last 4 blocks (layers 23-26), q_proj + v_proj only.
              get_peft_model automatically freezes the base model.
   Output   : (N, 1152) float32 tensor — one embedding per frame.
@@ -40,7 +43,11 @@ class VisualEncoder(nn.Module):
         # Processor: resizes images to 384×384 and normalises pixel values
         self.processor = AutoProcessor.from_pretrained(model_id)
 
-        full_model = AutoModel.from_pretrained(model_id)
+        # fp16 frozen backbone: halves weight storage (~3.5 GB → ~1.75 GB) and the
+        # checkpointed activation graph, which is what lets a 150-frame video fit a
+        # 16 GB T4. Compute already runs in fp16 under autocast, so this changes
+        # storage only, not numerics.
+        full_model = AutoModel.from_pretrained(model_id, torch_dtype=torch.float16)
 
         # Freeze text tower — visual_encoder.py only handles the vision side
         for param in full_model.text_model.parameters():
@@ -73,6 +80,13 @@ class VisualEncoder(nn.Module):
             bias="none",
         )
         full_model.vision_model = get_peft_model(full_model.vision_model, lora_config)
+
+        # Keep the trainable LoRA matrices in fp32 while the frozen backbone stays fp16
+        # (the QLoRA pattern). Autocast casts them to fp16 for the matmul, but the master
+        # weights + AdamW states stay fp32, which avoids fp16 underflow during updates.
+        for p in full_model.vision_model.parameters():
+            if p.requires_grad:
+                p.data = p.data.float()
 
         self.model = full_model.to(device)
 
