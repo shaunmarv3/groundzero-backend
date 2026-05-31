@@ -42,14 +42,24 @@ class VisualEncoder(nn.Module):
 
         full_model = AutoModel.from_pretrained(model_id)
 
-        # Gradient checkpointing: recomputes activations during backward instead of
-        # storing all 27 layers simultaneously. Cuts activation memory from ~7 GB to
-        # ~500 MB for 150-frame videos — essential for training on T4 (16 GB VRAM).
-        full_model.vision_model.encoder.gradient_checkpointing = True
-
         # Freeze text tower — visual_encoder.py only handles the vision side
         for param in full_model.text_model.parameters():
             param.requires_grad = False
+
+        # Gradient checkpointing: recomputes activations during backward instead of
+        # storing all 27 layers simultaneously. Cuts activation memory from ~7 GB to
+        # ~500 MB for 150-frame videos — essential for training on T4 (16 GB VRAM).
+        # Must be called on full_model (a PreTrainedModel) — the SiglipVisionTransformer
+        # submodule doesn't expose this method. This also wires up _gradient_checkpointing_func,
+        # which setting the bare `.gradient_checkpointing = True` flag does NOT do.
+        # use_reentrant=False lets gradients reach the LoRA adapters even though the frozen
+        # patch-embedding input has no grad — so no enable_input_require_grads() hack needed.
+        full_model.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs={"use_reentrant": False}
+        )
+        # Don't checkpoint the frozen text tower — wasted recompute, and it would warn
+        # "none of the inputs require grad" on every text forward.
+        full_model.text_model.encoder.gradient_checkpointing = False
 
         # Apply LoRA to the last 4 transformer blocks of the vision tower.
         # get_peft_model automatically freezes all base model params inside vision_model.
@@ -63,13 +73,6 @@ class VisualEncoder(nn.Module):
             bias="none",
         )
         full_model.vision_model = get_peft_model(full_model.vision_model, lora_config)
-        # enable_gradient_checkpointing() re-sets the flag on the wrapped model via PEFT's
-        # proper API — more reliable than setting the attribute before wrapping alone.
-        full_model.vision_model.enable_gradient_checkpointing()
-        # Required for gradient checkpointing to work through frozen PEFT layers:
-        # makes the frozen backbone forward pass retain an input that requires grad,
-        # so autograd can traverse the graph back into the LoRA adapters.
-        full_model.vision_model.enable_input_require_grads()
 
         self.model = full_model.to(device)
 
