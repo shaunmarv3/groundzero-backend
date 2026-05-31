@@ -561,8 +561,11 @@ def main():
                 conf_targets = torch.where(
                     is_neg, torch.zeros_like(confidence), torch.ones_like(confidence)
                 )
-                # BCE requires fp32 — autocast does NOT auto-cast it safely
-                conf_l = F.binary_cross_entropy(confidence.float(), conf_targets.float())
+                # binary_cross_entropy is unsafe under autocast (fp16) and PyTorch blocks
+                # it outright. Run it with autocast disabled so it executes in fp32.
+                # confidence is already a sigmoid probability, so plain BCE is correct here.
+                with torch.cuda.amp.autocast(enabled=False):
+                    conf_l = F.binary_cross_entropy(confidence.float(), conf_targets.float())
                 # divide by grad_accum so gradients average (not sum) across accum steps
                 loss   = (total_l + conf_l) / args.grad_accum
 
