@@ -66,7 +66,9 @@ class TextEncoder(nn.Module):
             truncation=True,
         ).to(self.device)
 
-        features = self.model.get_text_features(**inputs)  # (1, 1152)
+        out = self.model.get_text_features(**inputs)
+        # transformers >=4.50 returns a BaseModelOutputWithPooling instead of a tensor
+        features = out if isinstance(out, torch.Tensor) else out.pooler_output  # (1, 1152)
         return features
 
     def encode_queries(self, queries: list) -> torch.Tensor:
@@ -86,7 +88,9 @@ class TextEncoder(nn.Module):
             truncation=True,
         ).to(self.device)
 
-        features = self.model.get_text_features(**inputs)  # (N, 1152)
+        out = self.model.get_text_features(**inputs)
+        # transformers >=4.50 returns a BaseModelOutputWithPooling instead of a tensor
+        features = out if isinstance(out, torch.Tensor) else out.pooler_output  # (N, 1152)
         return features
 
     def count_params(self) -> dict:
