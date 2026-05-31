@@ -109,7 +109,10 @@ class VisualEncoder(nn.Module):
         for i in range(0, len(frames), chunk_size):
             chunk = frames[i : i + chunk_size]
             inputs = self.processor(images=chunk, return_tensors="pt").to(self.device)
-            features = self.model.get_image_features(**inputs)  # (chunk, 1152)
+            out = self.model.get_image_features(**inputs)
+            # transformers >=4.50 returns a BaseModelOutputWithPooling here instead of a
+            # bare tensor; pull the pooled (chunk, 1152) image embedding out either way.
+            features = out if isinstance(out, torch.Tensor) else out.pooler_output
             all_features.append(features)
         return torch.cat(all_features, dim=0)  # (N, 1152)
 
