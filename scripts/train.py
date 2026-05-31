@@ -49,7 +49,6 @@ import argparse
 import os
 import sys
 import tarfile
-import threading
 import time
 from pathlib import Path
 
@@ -57,7 +56,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from transformers import get_cosine_schedule_with_warmup
-from huggingface_hub import login, HfApi, hf_hub_download, snapshot_download
+from huggingface_hub import login, HfApi, hf_hub_download
 import wandb
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -105,38 +104,10 @@ def download_dataset(data_dir: Path) -> tuple:
             print(f"  Downloading {fname}...")
             hf_hub_download(DATASET_ID, fname, repo_type="dataset", local_dir=str(data_dir))
 
-    # First 1 000 train vids stored as individual JPEGs (not tarred)
-    sentinel = data_dir / ".first_batch_done"
-    if sentinel.exists():
-        print("  First 1 000 train vids: already present, skipping")
-    else:
-        print("  Downloading first 1 000 train vids (individual JPEGs)...")
-        print("  (download + file-copy for ~150k JPEGs takes several minutes)")
-
-        # Background thread: counts video dirs copied so far and prints every 15s
-        _stop = threading.Event()
-        def _watch():
-            while not _stop.is_set():
-                n = sum(1 for x in frames_dir.iterdir() if x.is_dir()) if frames_dir.exists() else 0
-                print(f"\r  Video dirs copied so far: {n} / ~1000", end="", flush=True)
-                _stop.wait(timeout=15)
-            print()  # newline after final update
-        _t = threading.Thread(target=_watch, daemon=True)
-        _t.start()
-
-        snapshot_download(
-            DATASET_ID,
-            repo_type="dataset",
-            allow_patterns=["frames/**"],
-            local_dir=str(data_dir),
-            local_dir_use_symlinks=False,
-        )
-
-        _stop.set()
-        _t.join()
-        sentinel.touch()
-        n_final = sum(1 for x in frames_dir.iterdir() if x.is_dir())
-        print(f"  First batch done — {n_final} video dirs")
+    # First 1 000 train vids (loose JPEGs in frames/) are INTENTIONALLY skipped:
+    # 150k tiny files download one-HTTP-request-each (~14 files/s), far too slow.
+    # We train on vids 1000-7445 (the tar batches below). GroundingDataset
+    # self-filters annotations to whatever frame dirs are actually on disk.
 
     # Train tar files (vids 1 000–7 445)
     for tar_name in TRAIN_TARS:

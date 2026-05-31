@@ -52,7 +52,20 @@ class GroundingDataset(Dataset):
         self.augment     = augment
 
         with open(jsonl_path, encoding="utf-8") as f:
-            self.samples = [json.loads(line) for line in f if line.strip()]
+            all_samples = [json.loads(line) for line in f if line.strip()]
+
+        # Keep only samples whose frame dir exists and holds at least one JPEG.
+        # Lets training run on whatever frame batches are on disk (e.g. skipping
+        # the loose first-1000 vids) without crashing in __getitem__.
+        self.samples = [
+            s for s in all_samples
+            if (self.frames_root / s["vid"]).is_dir()
+            and next((self.frames_root / s["vid"]).glob("*.jpg"), None) is not None
+        ]
+        dropped = len(all_samples) - len(self.samples)
+        if dropped:
+            print(f"GroundingDataset: kept {len(self.samples)} / {len(all_samples)} "
+                  f"annotations ({dropped} skipped — frames not on disk)")
 
         self.paraphrases  = load_paraphrases(paraphrases_path) if paraphrases_path else {}
         self.all_queries  = [s["query"] for s in self.samples]
