@@ -128,6 +128,50 @@ def speed_perturbation(
     return new_frames, new_ts
 
 
+def speed_perturbation_embeddings(
+    embeddings,
+    timestamps: List[float],
+    drop_frac: float = 0.1,
+    apply_prob: float = 0.3,
+):
+    """
+    Embedding-space version of speed_perturbation for the cached-feature pipeline
+    (Phase 2). Drops or duplicates ~drop_frac of frame EMBEDDINGS (rows of an
+    (N, D) tensor) instead of PIL frames — identical fire rate and semantics.
+
+    Args:
+        embeddings : (N, D) tensor of cached frame embeddings
+        timestamps : List[float] parallel to embeddings
+
+    Returns:
+        (embeddings, timestamps) — possibly shortened (drop) or lengthened (dup).
+        GT boundaries (in seconds) are unaffected; only the frame sequence changes.
+    """
+    n = embeddings.shape[0]
+    if random.random() > apply_prob or n < 3:
+        return embeddings, timestamps
+
+    n_modify = max(1, int(n * drop_frac))
+
+    if random.random() < 0.5:
+        # Drop: remove n_modify rows at random positions (keep at least 1)
+        drop = set(random.sample(range(n), min(n_modify, n - 1)))
+        keep = [i for i in range(n) if i not in drop]
+        new_emb = embeddings[keep]
+        new_ts  = [timestamps[i] for i in keep]
+    else:
+        # Duplicate: insert a copy of n_modify rows right after the original
+        dup = sorted(random.sample(range(n), min(n_modify, n)), reverse=True)
+        idx = list(range(n))
+        new_ts = list(timestamps)
+        for i in dup:
+            idx.insert(i + 1, i)                 # duplicate original row i
+            new_ts.insert(i + 1, timestamps[i])
+        new_emb = embeddings[idx]
+
+    return new_emb, new_ts
+
+
 # ---------------------------------------------------------------------------
 # 4. Query Paraphrase Sampling
 # ---------------------------------------------------------------------------

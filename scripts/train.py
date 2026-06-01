@@ -63,7 +63,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from app.pipeline.groundzero_model import GroundZeroModel
-from app.training.dataset import GroundingDataset, collate_fn
+from app.training.dataset import (
+    GroundingDataset, collate_fn,
+    CachedGroundingDataset, cached_collate_fn,
+)
 from app.training.losses import combined_loss
 from app.pipeline.span_extraction import decode_best_span, to_seconds
 
@@ -207,6 +210,41 @@ def encode_batch(model, batch, device, d_model=1152, chunk_size=8):
     return frame_embs, timestamps, query_emb
 
 
+def encode_batch_cached(model, batch, device, d_model=1152):
+    """
+    Cached-feature counterpart to encode_batch (Phase 2).
+
+    Pads the pre-extracted per-video frame embeddings to the batch max, builds the
+    fractional-timestamp tensor, and encodes the queries live. NO visual encoder
+    runs — frame_embs come straight from cache/{vid}.pt via CachedGroundingDataset.
+
+    Returns:
+        frame_embs : (B, N_max, d_model) float32, zero-padded
+        timestamps : (B, N_max)          fractional t/duration, padded 1.0
+        query_emb  : (B, 1, d_model)     float32
+    """
+    B      = len(batch["frame_embs"])
+    counts = [e.shape[0] for e in batch["frame_embs"]]
+    N_max  = max(counts)
+
+    frame_embs = torch.zeros(B, N_max, d_model, device=device)
+    timestamps = torch.ones(B, N_max, device=device)   # 1.0 = end-of-video pad position
+
+    for i in range(B):
+        emb = batch["frame_embs"][i].to(device).float()   # (N_i, d_model), fp16→fp32
+        n   = emb.shape[0]
+        frame_embs[i, :n] = emb
+        dur_i = batch["duration"][i].item()
+        frac  = torch.tensor(
+            [t / dur_i for t in batch["timestamps"][i]],
+            dtype=torch.float32, device=device,
+        )
+        timestamps[i, :n] = frac
+
+    query_emb = model.text_encoder.encode_queries(batch["query"]).float().unsqueeze(1)  # (B,1,D)
+    return frame_embs, timestamps, query_emb
+
+
 def temporal_iou(s1, e1, s2, e2):
     inter = max(0.0, min(e1, e2) - max(s1, s2))
     union = max(e1, e2) - min(s1, s2)
@@ -280,18 +318,22 @@ def _push(ckpt_path: Path, hf_repo: str, api: HfApi):
 
 
 @torch.no_grad()
-def validate(model, val_loader, device, chunk_size=8):
+def validate(model, val_loader, device, chunk_size=8, use_cache=False):
     model.eval()
     hits_05 = hits_07 = total = 0
     val_loss_sum = 0.0
 
     for batch in val_loader:
         with torch.cuda.amp.autocast():
-            frame_embs, timestamps, query_emb = encode_batch(model, batch, device, chunk_size=chunk_size)
+            if use_cache:
+                frame_embs, timestamps, query_emb = encode_batch_cached(model, batch, device)
+            else:
+                frame_embs, timestamps, query_emb = encode_batch(model, batch, device, chunk_size=chunk_size)
             start_logits, end_logits, confidence = model(frame_embs, timestamps, query_emb)
 
         for i in range(start_logits.shape[0]):
-            n_frames = len(batch["frames"][i])
+            # timestamps is present in both the JPEG and cached collates; frames is not
+            n_frames = len(batch["timestamps"][i])
             s_idx, e_idx = decode_best_span(start_logits[i], end_logits[i])
             s_idx = min(s_idx, n_frames - 1)
             e_idx = min(e_idx, n_frames - 1)
@@ -343,6 +385,14 @@ def parse_args():
                    help="Checkpoint path to resume from. Defaults to auto-detect latest.pt")
     p.add_argument("--skip_download", action="store_true",
                    help="Skip dataset download check (data already on disk)")
+
+    # Feature caching (Phase 2)
+    p.add_argument("--use_cache", action="store_true",
+                   help="Train on pre-extracted SigLIP embeddings (cache/{vid}.pt from "
+                        "scripts/precompute_embeddings.py). Skips the vision tower + LoRA "
+                        "entirely — frame embeddings come from disk.")
+    p.add_argument("--cache_dir", default=None,
+                   help="Dir of cached {vid}.pt files (default: <data_dir>/cache)")
 
     # Training
     p.add_argument("--batch_size",   type=int,   default=8)
@@ -407,16 +457,26 @@ def main():
         train_jsonl, val_jsonl, frames_dir = download_dataset(data_dir)
 
     # ── DataLoaders ───────────────────────────────────────────────────────────
-    train_ds = GroundingDataset(train_jsonl, frames_dir, augment=True)
-    val_ds   = GroundingDataset(val_jsonl,   frames_dir, augment=False)
+    if args.use_cache:
+        cache_dir = (Path(args.cache_dir).expanduser().resolve()
+                     if args.cache_dir else (data_dir / "cache"))
+        print(f"  Cache mode (--use_cache): loading embeddings from {cache_dir}")
+        train_ds = CachedGroundingDataset(train_jsonl, cache_dir, augment=True)
+        val_ds   = CachedGroundingDataset(val_jsonl,   cache_dir, augment=False)
+        collate  = cached_collate_fn
+    else:
+        train_ds = GroundingDataset(train_jsonl, frames_dir, augment=True)
+        val_ds   = GroundingDataset(val_jsonl,   frames_dir, augment=False)
+        collate  = collate_fn
+
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True,
-        collate_fn=collate_fn, num_workers=args.num_workers, pin_memory=True,
+        collate_fn=collate, num_workers=args.num_workers, pin_memory=True,
         persistent_workers=(args.num_workers > 0),
     )
     val_loader = DataLoader(
         val_ds, batch_size=args.batch_size, shuffle=False,
-        collate_fn=collate_fn, num_workers=args.num_workers, pin_memory=True,
+        collate_fn=collate, num_workers=args.num_workers, pin_memory=True,
         persistent_workers=(args.num_workers > 0),
     )
     print(f"\nTrain: {len(train_ds):,} samples / {len(train_loader):,} batches")
@@ -434,6 +494,7 @@ def main():
         lora_layers=[23, 24, 25, 26],
         dropout=args.dropout,
         device=DEVICE,
+        use_cache=args.use_cache,
     )
     counts = model.count_params()
     print(f"Trainable: {counts['total_trainable'] / 1e6:.1f} M  |  "
@@ -541,7 +602,10 @@ def main():
             do_update     = ((batch_idx + 1) % args.grad_accum == 0) or is_last_batch
 
             with torch.cuda.amp.autocast():
-                frame_embs, timestamps, query_emb = encode_batch(model, batch, DEVICE, chunk_size=args.chunk_size)
+                if args.use_cache:
+                    frame_embs, timestamps, query_emb = encode_batch_cached(model, batch, DEVICE)
+                else:
+                    frame_embs, timestamps, query_emb = encode_batch(model, batch, DEVICE, chunk_size=args.chunk_size)
                 start_logits, end_logits, confidence = model(frame_embs, timestamps, query_emb)
 
                 gt_start = batch["gt_start_idx"].to(DEVICE)
@@ -631,7 +695,7 @@ def main():
 
         # ── Validate ──────────────────────────────────────────────────────────
         print("  Validating...")
-        vm = validate(model, val_loader, DEVICE, chunk_size=args.chunk_size)
+        vm = validate(model, val_loader, DEVICE, chunk_size=args.chunk_size, use_cache=args.use_cache)
         wandb.log({**vm, "epoch": epoch}, step=global_step)
         print(
             f"  Val  R@1 IoU=0.5: {vm['val/r1_iou05']:.4f}  "

@@ -52,15 +52,26 @@ class GroundZeroModel(nn.Module):
         lora_layers: list = [23, 24, 25, 26],
         dropout: float = 0.1,
         device: str = "cuda",
+        use_cache: bool = False,
     ):
         super().__init__()
         self.device = device
         self.d_model = d_model
+        self.use_cache = use_cache
 
-        self.visual_encoder   = VisualEncoder(model_id, lora_rank, lora_alpha, lora_layers, device)
+        if use_cache:
+            # Cached-feature training (Phase 2): frame embeddings are pre-extracted
+            # on disk, so the vision tower + LoRA are not needed at all — skipping
+            # VisualEncoder saves ~1.75 GB VRAM and all the per-step vision compute.
+            # Only the frozen SigLIP text tower is needed, for encoding queries.
+            self.visual_encoder = None
+            self.text_encoder   = TextEncoder(model_id, device)
+        else:
+            self.visual_encoder = VisualEncoder(model_id, lora_rank, lora_alpha, lora_layers, device)
+            # Share the already-loaded SigLIP 2 backbone — avoids loading 1.1 GB twice
+            self.text_encoder   = TextEncoder(model_id, device, shared_model=self.visual_encoder.model)
+
         self.temporal_context = TemporalContextModule(d_model).to(device)
-        # Share the already-loaded SigLIP 2 backbone — avoids loading 1.1 GB twice
-        self.text_encoder     = TextEncoder(model_id, device, shared_model=self.visual_encoder.model)
         self.cross_modal      = CrossModalTransformer(d_model, n_heads, n_layers, dropout).to(device)
         self.span_head        = SpanExtractionHead(d_model, dropout).to(device)
 
@@ -204,12 +215,13 @@ class GroundZeroModel(nn.Module):
             return trainable, total
 
         rows = {
-            "visual_encoder":   _count(self.visual_encoder),
             "text_encoder":     _count(self.text_encoder),
             "temporal_context": _count(self.temporal_context),
             "cross_modal":      _count(self.cross_modal),
             "span_head":        _count(self.span_head),
         }
+        if self.visual_encoder is not None:
+            rows["visual_encoder"] = _count(self.visual_encoder)
         total_trainable = sum(v[0] for v in rows.values())
         total_all       = sum(v[1] for v in rows.values())
         return {
