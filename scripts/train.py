@@ -78,6 +78,7 @@ from app.pipeline.span_extraction import decode_best_span, to_seconds
 DATASET_ID = "shaunmarvell/qvhighlights-1fps"
 
 TRAIN_TARS = [
+    "frames_000000_001000.tar",   # 880 recovered vids (loose frames re-packed; see Session 20)
     "frames_001000_002000.tar",
     "frames_002000_003000.tar",
     "frames_003000_004000.tar",
@@ -88,11 +89,18 @@ TRAIN_TARS = [
 ]
 
 
-def download_dataset(data_dir: Path) -> tuple:
+def download_dataset(data_dir: Path, cache_only: bool = False,
+                     cache_tar: str = "cache_embeddings.tar") -> tuple:
     """
     Download QVHighlights from HuggingFace if not already present.
     Uses sentinel files so interrupted downloads can be resumed safely.
     Returns (train_jsonl, val_jsonl, frames_dir).
+
+    cache_only=True  → cached-feature training: download annotations + the
+    precomputed-embedding tar (`cache_tar`) ONLY, skipping the ~30 GB of raw
+    frame tars (which cache-mode training never reads). This lets you extract on
+    one machine, push the cache (precompute_embeddings.py --push_cache_repo), then
+    train on a fresh/cheaper machine by pulling just the ~2.6 GB cache tar.
     """
     data_dir.mkdir(parents=True, exist_ok=True)
     frames_dir = data_dir / "frames"
@@ -107,12 +115,35 @@ def download_dataset(data_dir: Path) -> tuple:
             print(f"  Downloading {fname}...")
             hf_hub_download(DATASET_ID, fname, repo_type="dataset", local_dir=str(data_dir))
 
-    # First 1 000 train vids (loose JPEGs in frames/) are INTENTIONALLY skipped:
-    # 150k tiny files download one-HTTP-request-each (~14 files/s), far too slow.
-    # We train on vids 1000-7445 (the tar batches below). GroundingDataset
-    # self-filters annotations to whatever frame dirs are actually on disk.
+    # Cached-feature path: pull only the embedding tar, not the raw frames.
+    if cache_only:
+        flag = data_dir / f".{cache_tar}.done"
+        if flag.exists():
+            print(f"  {cache_tar}: already extracted, skipping")
+        else:
+            print(f"  Downloading {cache_tar} (precomputed embeddings)...")
+            p = hf_hub_download(DATASET_ID, cache_tar, repo_type="dataset", local_dir=str(data_dir))
+            print(f"  Extracting {cache_tar}...")
+            with tarfile.open(p) as t:
+                t.extractall(str(data_dir))   # members are cache/{vid}.pt → data_dir/cache/
+            os.remove(p)
+            flag.touch()
+        cache_path = data_dir / "cache"
+        cache_n = sum(1 for _ in cache_path.glob("*.pt")) if cache_path.is_dir() else 0
+        train_jsonl = data_dir / "annotations_train.jsonl"
+        val_jsonl   = data_dir / "annotations_val.jsonl"
+        print(f"Cache ready — {cache_n} embedding files / "
+              f"{sum(1 for _ in open(train_jsonl))} train / {sum(1 for _ in open(val_jsonl))} val annotations")
+        return train_jsonl, val_jsonl, frames_dir
 
-    # Train tar files (vids 1 000–7 445)
+    # The first-chunk vids used to be skipped (150k loose JPEGs downloaded one
+    # HTTP-request-each, far too slow). They were recovered via `git clone` of the
+    # dataset (git-LFS batch API sidesteps the per-file resolver rate limit), then
+    # re-packed into frames_000000_001000.tar (880 vids — the repo only ever held
+    # 880 loose-frame dirs, not 1000). So ALL chunks now come via fast tar extract.
+    # GroundingDataset self-filters annotations to whatever frame dirs are on disk.
+
+    # Train tar files (full train split, ~7430 vids)
     for tar_name in TRAIN_TARS:
         done_flag = data_dir / f".{tar_name}.done"
         if done_flag.exists():
@@ -261,12 +292,17 @@ def save_and_push(
     model, optimizer, scheduler, scaler,
     epoch, global_step, best_r1_05, r1_05,
     ckpt_dir, hf_repo, api, is_best,
+    push_latest=True,
 ):
     """
     Save two checkpoints every epoch:
       latest.pt — full training state (for resume). Overwrites each epoch.
       best.pt   — trainable params only (for inference). Overwrites on improvement.
-    Both are pushed to HuggingFace.
+
+    latest.pt is ALWAYS written to disk every epoch (so resume never loses progress).
+    It is only *uploaded* to HuggingFace when push_latest=True — gated by --push_every,
+    because the ~1.9GB upload can cost more wall-clock than a cached epoch. best.pt is
+    smaller (trainable params only) and is pushed on every improvement.
     """
     t_state = trainable_state_dict(model)
 
@@ -286,7 +322,10 @@ def save_and_push(
         latest_path,
     )
     print(f"  Saved latest.pt (ep {epoch}, R@1={r1_05:.4f})")
-    _push(latest_path, hf_repo, api)
+    if push_latest:
+        _push(latest_path, hf_repo, api)
+    else:
+        print(f"  (skipped HF push of latest.pt — next push per --push_every)")
 
     # best.pt — only when val improved
     if is_best:
@@ -393,6 +432,10 @@ def parse_args():
                         "entirely — frame embeddings come from disk.")
     p.add_argument("--cache_dir", default=None,
                    help="Dir of cached {vid}.pt files (default: <data_dir>/cache)")
+    p.add_argument("--cache_tar", default="cache_embeddings.tar",
+                   help="With --use_cache (and without --skip_download): name of the precomputed-"
+                        "embedding tar to pull from HF instead of the raw frame tars. Must match "
+                        "precompute_embeddings.py --cache_tar_name.")
 
     # Training
     p.add_argument("--batch_size",   type=int,   default=8)
@@ -403,6 +446,12 @@ def parse_args():
     p.add_argument("--warmup_steps", type=int,   default=500)
     p.add_argument("--clip_grad",    type=float, default=1.0)
     p.add_argument("--log_every",    type=int,   default=50)
+    p.add_argument("--push_every",   type=int,   default=1,
+                   help="Push latest.pt to HF every N epochs (it is ALWAYS saved locally "
+                        "every epoch for resume). latest.pt is ~1.9GB (params+optimizer); "
+                        "pushing every epoch can cost more wall-clock than the epoch itself. "
+                        "Set e.g. 10 for long runs. best.pt still pushes on every improvement. "
+                        "The final epoch and any time-limit exit always push.")
     p.add_argument("--max_hours",    type=float, default=None,
                    help="Stop cleanly after this many hours (e.g. 5.5 for a 6-hour session)")
     p.add_argument("--chunk_size",   type=int,   default=8,
@@ -453,6 +502,10 @@ def main():
         val_jsonl   = data_dir / "annotations_val.jsonl"
         frames_dir  = data_dir / "frames"
         print("  Skipping download check (--skip_download)")
+    elif args.use_cache:
+        # Cache-mode: pull only the ~2.6 GB embedding tar, not the 30 GB of frames.
+        train_jsonl, val_jsonl, frames_dir = download_dataset(
+            data_dir, cache_only=True, cache_tar=args.cache_tar)
     else:
         train_jsonl, val_jsonl, frames_dir = download_dataset(data_dir)
 
@@ -708,10 +761,12 @@ def main():
         if is_best:
             best_r1_05 = vm["val/r1_iou05"]
 
+        push_latest = (epoch % args.push_every == 0) or (epoch == args.epochs)
         save_and_push(
             model, optimizer, scheduler, scaler,
             epoch, global_step, best_r1_05, vm["val/r1_iou05"],
             ckpt_dir, args.hf_repo, api, is_best=is_best,
+            push_latest=push_latest,
         )
         print()
 

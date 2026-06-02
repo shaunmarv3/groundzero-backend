@@ -155,6 +155,43 @@ def encode_pixel_values(model, pixel_values, device, chunk_size):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Optional: back up the cache to HF (one tar → durable against ephemeral disks)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def push_cache(cache_dir: Path, repo_id: str, tar_name: str, token: str | None):
+    """
+    Tar every cache/{vid}.pt into one uncompressed tar and upload it to an HF
+    dataset repo. Members are 'cache/{vid}.pt' so the training side can extract
+    straight into <data_dir>/cache/. One LFS file = no per-file resolver rate
+    limit on either upload or later download (mirrors the frame-tar strategy).
+    """
+    import tarfile
+    from huggingface_hub import HfApi, login
+
+    pts = sorted(cache_dir.glob("*.pt"))
+    if not pts:
+        print("  (push_cache) no .pt files to back up — skipping")
+        return
+    if token:
+        login(token=token)
+
+    tar_path = cache_dir.parent / tar_name
+    print(f"  Tarring {len(pts)} cache files → {tar_path} ...")
+    with tarfile.open(tar_path, "w") as tar:                 # 'w' = no compression (already fp16 binary)
+        for pt in pts:
+            tar.add(pt, arcname=f"cache/{pt.name}")
+    gb = tar_path.stat().st_size / 1e9
+    print(f"  {tar_path.name}  {gb:.2f} GB → uploading to {repo_id} (dataset) ...")
+    HfApi().upload_file(
+        path_or_fileobj=str(tar_path),
+        path_in_repo=tar_name,
+        repo_id=repo_id,
+        repo_type="dataset",
+    )
+    print(f"  Cache backup uploaded: {repo_id}/{tar_name} ({len(pts)} vids).")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -181,6 +218,14 @@ def main():
                          "(resumable — already-cached vids are skipped on rerun).")
     ap.add_argument("--limit", type=int, default=None,
                     help="Only encode the first N vids (smoke test).")
+    ap.add_argument("--push_cache_repo", type=str, default=None,
+                    help="If set (e.g. shaunmarvell/qvhighlights-1fps), tar the whole cache dir "
+                         "and upload it to this HF *dataset* repo when extraction finishes (or on a "
+                         "--max_hours stop). The cache is small (~345 KB/vid → ~2.6 GB for the full "
+                         "set) so this is a cheap insurance backup against losing an expensive GPU "
+                         "pass on an ephemeral disk. One tar = one LFS file = no per-file rate limit.")
+    ap.add_argument("--cache_tar_name", type=str, default="cache_embeddings.tar",
+                    help="Name of the cache backup tar in the HF repo (members are cache/{vid}.pt).")
     args = ap.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -299,6 +344,12 @@ def main():
         print(f"  gpu-only   : {gpu_ms:6.1f} ms/frame   (compute floor, GPU busy {gpu_busy:.0f}% "
               f"of wall — closer to 100% = decode fully hidden)")
     print(f"\nDone. {done} newly cached, {skipped} already present → {cache_dir}")
+
+    # Back up the whole cache to HF (runs on normal finish AND on a --max_hours stop,
+    # so an interrupted multi-session extraction never loses already-done work).
+    if args.push_cache_repo:
+        print(f"\nBacking up cache → {args.push_cache_repo} ...")
+        push_cache(cache_dir, args.push_cache_repo, args.cache_tar_name, args.hf_token)
 
 
 if __name__ == "__main__":
