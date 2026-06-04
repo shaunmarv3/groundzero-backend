@@ -46,14 +46,17 @@ async def lifespan(app: FastAPI):
     settings.upload_path  # property creates dir if needed
     logger.info(f"Upload directory ready: {settings.upload_dir}")
 
-    # TODO (Phase 7): load model weights here so inference is warm
-    # from app.models.groundzero_model import GroundZeroModel
-    # app.state.model = GroundZeroModel.from_pretrained(
-    #     settings.hf_model_repo,
-    #     device=settings.resolved_device,
-    #     cache_dir=settings.model_cache_dir or None,
-    # )
-    # logger.info(f"Model loaded on {settings.resolved_device}")
+    # Load the trained model + warm it up so the first /predict isn't cold.
+    # Wrapped in try/except: if the model fails to load (e.g. missing checkpoint),
+    # the app still starts and /predict returns 503 instead of crashing the server.
+    app.state.orchestrator = None
+    try:
+        from app.pipeline.orchestrator import Orchestrator
+        app.state.orchestrator = Orchestrator.load(settings)
+        app.state.orchestrator.warmup()
+        logger.info(f"Model loaded on {app.state.orchestrator.device} ✓")
+    except Exception as e:
+        logger.error(f"Model failed to load — /predict will return 503. Reason: {e}")
 
     logger.info("GroundZero backend ready ✓")
     yield
@@ -61,8 +64,14 @@ async def lifespan(app: FastAPI):
     # -------- SHUTDOWN --------
     logger.info("Shutting down GroundZero backend...")
     # Clean up model from memory if needed
-    if hasattr(app.state, "model"):
-        del app.state.model
+    if getattr(app.state, "orchestrator", None) is not None:
+        del app.state.orchestrator
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
     logger.info("Shutdown complete.")
 
 

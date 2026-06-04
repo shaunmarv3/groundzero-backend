@@ -43,8 +43,18 @@ class Settings(BaseSettings):
     )
 
     hf_model_repo: str = Field(
-        default="your-hf-username/groundzero-weights",
+        default="shaunmarvell/qvhighlights-model",
         description="HuggingFace Hub repo ID for trained weights",
+    )
+    ckpt_name: str = Field(
+        default="best.pt",
+        description="Checkpoint filename inside hf_model_repo / model_path dir",
+    )
+    model_path: str = Field(
+        default="models/best.pt",
+        description="Local path to the trained head checkpoint (downloaded via "
+                    "scripts/download_model.py). Loaded at startup if it exists; "
+                    "otherwise the app falls back to fetching ckpt_name from hf_model_repo.",
     )
     model_cache_dir: str = Field(
         default="",
@@ -68,9 +78,18 @@ class Settings(BaseSettings):
         default=5.0, ge=0.0,
         description="Seconds of padding around coarse prediction for fine re-sample",
     )
+    use_coarse_to_fine: bool = Field(
+        default=False,
+        description="If True, run the 4fps fine refinement pass after the 1fps coarse "
+                    "pass. Default False: the model was trained at 1fps and never saw "
+                    "4fps frame density, so a single 1fps pass is the correctness-safe "
+                    "baseline. Enable only after measuring that it actually helps.",
+    )
     confidence_threshold: float = Field(
         default=0.4, ge=0.0, le=1.0,
-        description="Confidence below which 'event not found' is returned",
+        description="Confidence below which a SOFT 'low confidence' warning is surfaced. "
+                    "NOTE: the trained confidence head is uncalibrated (ECE 0.40) and "
+                    "non-discriminative (48% correct below 0.4) — do NOT hard-gate on it.",
     )
     max_video_duration_sec: int = Field(
         default=7200,
@@ -122,6 +141,14 @@ class Settings(BaseSettings):
             except ImportError:
                 return "cpu"
         return self.device
+
+    @property
+    def model_full_path(self) -> Path:
+        """Absolute path to the local checkpoint, resolved relative to the backend root."""
+        p = Path(self.model_path)
+        if not p.is_absolute():
+            p = Path(__file__).resolve().parent / p
+        return p
 
     @property
     def allowed_origins_list(self) -> list[str]:

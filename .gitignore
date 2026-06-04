@@ -1,2 +1,9 @@
 /graphify-out
 /.claude
+/test_videos
+# Trained weights (619 MB+ checkpoints) — fetched via scripts/download_model.py
+/models/
+# Uploaded videos handled at runtime
+/uploads/
+*.pt
+*.pt.tmp
