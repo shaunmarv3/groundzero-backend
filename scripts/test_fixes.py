@@ -20,6 +20,8 @@ from app.pipeline.span_extraction import decode_best_span
 from app.training.losses import combined_loss
 
 D, HEADS, LAYERS = 32, 4, 2
+# Windows consoles default to cp1252; don't crash on any non-ASCII character
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 torch.manual_seed(0)
 
 
@@ -109,7 +111,7 @@ def test_word_level_shapes():
 def test_contrastive_gradient():
     """
     Fix 1: the original call fed the cached frame embeddings (no grad path) to the
-    contrastive term → it is a constant. The fixed call feeds the model's output.
+    contrastive term -> it is a constant. The fixed call feeds the model's output.
     """
     print("\n=== contrastive: dead on cached inputs, alive on grounded features ===")
     m = tiny().train()
@@ -124,7 +126,7 @@ def test_contrastive_gradient():
     _, _, _, cont_new = combined_loss(s, e, gs, ge, query, grounded)
 
     ok = check(f"original: cont={cont_old.item():.3f} has requires_grad={cont_old.requires_grad} "
-               "(constant → trains nothing)", not cont_old.requires_grad)
+               "(constant -> trains nothing)", not cont_old.requires_grad)
     cont_new.backward()
     g = sum(p.grad.abs().sum().item() for p in m.cross_modal.parameters() if p.grad is not None)
     ok &= check(f"fixed: cont={cont_new.item():.3f} sends gradient into cross_modal (|grad| sum {g:.3e})",
@@ -133,7 +135,7 @@ def test_contrastive_gradient():
 
 
 def test_cfg_defaults():
-    print("\n=== old checkpoints: no model_cfg → original design ===")
+    print("\n=== old checkpoints: no model_cfg -> original design ===")
     return check(f"resolve_model_cfg({{}}) = {resolve_model_cfg({})}",
                  not any(resolve_model_cfg({}).values()))
 

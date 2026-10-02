@@ -874,6 +874,21 @@ def main():
             ckpt_dir, args.hf_repo, api, is_best=is_best,
             push_latest=push_latest, model_cfg=model_cfg, run_name=args.run_name,
         )
+
+        # ── Whole-run time left ───────────────────────────────────────────────
+        # The per-step ETA above only counts training steps; this one averages FULL
+        # epochs (train + validate + save/push), so it is the honest "when is it done".
+        run_secs   = time.time() - train_start
+        done_here  = epoch - start_epoch + 1                 # epochs finished in THIS session
+        avg_epoch  = run_secs / done_here
+        left_secs  = avg_epoch * (args.epochs - epoch)
+        lh, lm     = divmod(int(left_secs) // 60, 60)
+        print(f"  [time] full epoch {avg_epoch / 60:.1f} min avg | epoch {epoch}/{args.epochs} | "
+              f"elapsed {run_secs / 3600:.2f} h | TOTAL TIME LEFT ~{lh}h{lm:02d}m")
+        if args.max_hours and run_secs + left_secs > args.max_hours * 3600:
+            fits = int((args.max_hours * 3600 - run_secs) / avg_epoch)
+            print(f"  [time] won't finish within --max_hours={args.max_hours}: ~{fits} more epochs "
+                  f"fit this session, then it saves; rerun with --resume_from_hf to continue")
         print()
 
     run.finish()
