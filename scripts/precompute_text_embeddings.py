@@ -64,6 +64,7 @@ EXAMPLE (Kaggle, accelerator "GPU T4 x2")
 import argparse
 import json
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -116,6 +117,7 @@ def encode_shard(rank: int, world_size: int, queries: list, args) -> None:
     there is at most one GPU.
     """
     from transformers import AutoModel, AutoProcessor
+    sys.stdout.reconfigure(line_buffering=True)   # spawned workers: print lines immediately
 
     use_cuda = torch.cuda.is_available()
     device   = f"cuda:{rank}" if use_cuda else "cpu"
@@ -131,9 +133,11 @@ def encode_shard(rank: int, world_size: int, queries: list, args) -> None:
     pad_id    = processor.tokenizer.pad_token_id
 
     pooled, tokens, masks = [], [], []
+    n_batches = (len(texts) + args.batch_size - 1) // args.batch_size
+    print(f"  [rank {rank}] model loaded on {device} — {len(texts)} queries / {n_batches} batches", flush=True)
     t0 = time.time()
     with torch.no_grad():
-        for b in range(0, len(texts), args.batch_size):
+        for bi, b in enumerate(range(0, len(texts), args.batch_size), start=1):
             chunk  = texts[b : b + args.batch_size]
             # identical to TextEncoder.encode_queries
             inputs = processor(
@@ -156,6 +160,14 @@ def encode_shard(rank: int, world_size: int, queries: list, args) -> None:
             tokens.append(h.half().cpu())
             masks.append(m.cpu())
 
+            # progress + time left for this GPU (avg time per batch so far × batches left)
+            if bi % args.log_every == 0 or bi == n_batches:
+                elapsed = time.time() - t0
+                eta     = elapsed / bi * (n_batches - bi)
+                print(f"  [rank {rank}] batch {bi}/{n_batches} ({bi / n_batches:5.1%}) | "
+                      f"{min(b + args.batch_size, len(texts))}/{len(texts)} queries | "
+                      f"elapsed {elapsed / 60:4.1f} min | ETA {eta / 60:4.1f} min", flush=True)
+
     part = {
         "idx":    torch.tensor(idx, dtype=torch.long),
         "pooled": torch.cat(pooled),
@@ -167,7 +179,7 @@ def encode_shard(rank: int, world_size: int, queries: list, args) -> None:
     peak = torch.cuda.max_memory_allocated(device) / 1e9 if use_cuda else 0.0
     name = torch.cuda.get_device_name(device) if use_cuda else "cpu"
     print(f"  [rank {rank} | {name}] {len(idx)} queries in {time.time() - t0:.1f}s | "
-          f"peak VRAM {peak:.2f} GB | tokens {tuple(part['tokens'].shape)}")
+          f"peak VRAM {peak:.2f} GB | tokens {tuple(part['tokens'].shape)}", flush=True)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -227,10 +239,13 @@ def main():
     ap.add_argument("--lowercase",  action="store_true",
                     help="Encode q.lower() (SigLIP 2's training format). Writes *_lower.pt.")
     ap.add_argument("--limit",      type=int, default=None, help="Only the first N queries (smoke test).")
+    ap.add_argument("--log_every",  type=int, default=5, help="Print progress + ETA every N batches per GPU.")
     ap.add_argument("--hf_token",   type=str, default=os.environ.get("HF_TOKEN"))
     ap.add_argument("--push_repo",  type=str, default=None,
                     help=f"Upload both files to this HF dataset repo (e.g. {DATASET_REPO}).")
     args = ap.parse_args()
+    # Kaggle's `!python` pipes stdout (block-buffered) — flush every line so progress shows live.
+    sys.stdout.reconfigure(line_buffering=True)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
