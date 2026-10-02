@@ -133,9 +133,15 @@ def contrastive_loss_intra_video(
     gt_end_idx: torch.Tensor,         # (B,) long
     temperature: float = 0.07,
     n_negatives: int = 8,
+    lengths: torch.Tensor | None = None,  # (B,) real frame count per sample (None = all N)
 ) -> torch.Tensor:
     """
     InfoNCE loss with intra-video hard negatives.
+
+    grounded_features must be the POST-cross-modal features (model output). Fed the
+    cached input embeddings instead — which have no grad path to any trainable
+    weight — this term is a constant and trains nothing (the shipped-model bug).
+    lengths: negatives are sampled only from real frames, never from batch padding.
 
     For each sample:
       Positive  = mean-pool of frames in [gt_start, gt_end]
@@ -149,7 +155,8 @@ def contrastive_loss_intra_video(
 
     for b in range(B):
         q    = query_emb[b]          # (1, d)
-        feats = grounded_features[b]  # (N, d)
+        n_b  = int(lengths[b]) if lengths is not None else grounded_features.shape[1]
+        feats = grounded_features[b, :n_b]  # (n_b, d) — real frames only
         gs   = int(gt_start_idx[b].item())
         ge   = int(gt_end_idx[b].item())
 
@@ -188,6 +195,7 @@ def combined_loss(
     gt_end_idx: torch.Tensor,         # (B,) long
     query_emb: torch.Tensor,          # (B, 1, d)
     grounded_features: torch.Tensor,  # (B, N, d)
+    lengths: torch.Tensor | None = None,  # (B,) real frames per sample
 ) -> tuple:
     """
     total = span + 0.5 * iou + 0.1 * contrastive
@@ -198,7 +206,7 @@ def combined_loss(
     span = span_extraction_loss(start_logits, end_logits, gt_start_idx, gt_end_idx)
     iou  = temporal_iou_loss(start_logits, end_logits, gt_start_idx, gt_end_idx)
     cont = contrastive_loss_intra_video(
-        query_emb, grounded_features, gt_start_idx, gt_end_idx
+        query_emb, grounded_features, gt_start_idx, gt_end_idx, lengths=lengths
     )
     total = span + 0.5 * iou + 0.1 * cont
     return total, span, iou, cont

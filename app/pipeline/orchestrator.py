@@ -36,7 +36,7 @@ from pathlib import Path
 
 import torch
 
-from app.pipeline.groundzero_model import GroundZeroModel
+from app.pipeline.groundzero_model import GroundZeroModel, resolve_model_cfg
 from app.pipeline.span_extraction import decode_best_span, to_seconds
 
 logger = logging.getLogger("groundzero.orchestrator")
@@ -48,12 +48,13 @@ class Orchestrator:
     """Holds the warm model and runs frozen-SigLIP grounding inference."""
 
     def __init__(self, model: GroundZeroModel, device: str, checkpoint: str,
-                 d_model: int = 1152, encode_chunk_size: int = 8):
+                 d_model: int = 1152, encode_chunk_size: int = 8, cfg: dict | None = None):
         self.model = model
         self.device = device
         self.checkpoint = checkpoint
         self.d_model = d_model
         self.encode_chunk_size = encode_chunk_size
+        self.cfg = cfg or resolve_model_cfg({})
 
     # ------------------------------------------------------------------ #
     #  Construction                                                       #
@@ -89,6 +90,8 @@ class Orchestrator:
         ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
         logger.info(f"  checkpoint epoch={ckpt.get('epoch')} "
                     f"saved R@1@0.5={ckpt.get('r1_iou05')}")
+        cfg = resolve_model_cfg(ckpt)   # shipped best.pt has no model_cfg → original design
+        logger.info(f"  model_cfg: {cfg}")
 
         # ── build model with VISION tower (use_cache=False) ─────────────
         # use_cache=False so the VisualEncoder (frozen SigLIP + identity LoRA) exists
@@ -105,6 +108,8 @@ class Orchestrator:
             dropout=0.1,
             device=device,
             use_cache=False,
+            use_gelu=cfg["use_gelu"],
+            word_level=cfg["word_level"],
         )
 
         # ── load ONLY the trained head; SigLIP towers stay pretrained, LoRA identity
@@ -118,7 +123,7 @@ class Orchestrator:
         # ── eval mode: dropout OFF everywhere (cross_modal, span_head, LoRA) ──
         model.eval().to(device)
 
-        return cls(model, device, checkpoint, d_model=d_model)
+        return cls(model, device, checkpoint, d_model=d_model, cfg=cfg)
 
     # ------------------------------------------------------------------ #
     #  Inference                                                          #
@@ -152,6 +157,7 @@ class Orchestrator:
         start_sec: float = 0.0,
         end_sec: float | None = None,
         max_frames: int | None = 1024,
+        query_mask: torch.Tensor | None = None,
     ) -> dict:
         """
         One grounding pass over [start_sec, end_sec] at `fps`.
@@ -178,8 +184,10 @@ class Orchestrator:
         frac = torch.tensor([t / duration for t in ts_abs],
                             dtype=torch.float32, device=self.device)  # (N,)
 
+        # single video → no batch padding, so no frame_mask needed
         with self._autocast():
-            start_logits, end_logits, confidence = self.model(frame_embs, frac, query_emb)
+            start_logits, end_logits, confidence = self.model(
+                frame_embs, frac, query_emb, query_mask=query_mask)
 
         sl = start_logits[0, :n]
         el = end_logits[0, :n]
@@ -232,11 +240,10 @@ class Orchestrator:
         meta = get_video_metadata(video_path)
         duration = float(meta["duration"])
 
-        # encode query once (frozen SigLIP text tower), float32, (1, 1, d)
-        query_emb = self.model.text_encoder.encode_query(query).float().unsqueeze(0)
+        query_emb, query_mask = self._encode_query(query)
 
         # ── Pass 1: coarse over the whole video ─────────────────────────
-        coarse = self._run_pass(video_path, query_emb, duration, fps=fps)
+        coarse = self._run_pass(video_path, query_emb, duration, fps=fps, query_mask=query_mask)
 
         result = dict(coarse)
         coarse_meta = None
@@ -247,7 +254,7 @@ class Orchestrator:
             region_end = min(duration, coarse["end_sec"] + fine_padding_sec)
             fine = self._run_pass(
                 video_path, query_emb, duration, fps=fine_fps,
-                start_sec=region_start, end_sec=region_end,
+                start_sec=region_start, end_sec=region_end, query_mask=query_mask,
             )
             if fine["n_frames"] > 0:
                 coarse_meta = {"start_sec": coarse["start_sec"], "end_sec": coarse["end_sec"]}
@@ -280,6 +287,21 @@ class Orchestrator:
         }
 
     @torch.no_grad()
+    def _encode_query(self, query: str) -> tuple:
+        """
+        Query → model input, the way the checkpoint was trained (cfg): lowercased if
+        trained lowercase; pooled (1,1,d) or word tokens (1,L,d)+mask (word_level).
+        Runs under autocast like the training-time / precomputed text embeddings.
+        """
+        text = query.lower() if self.cfg["lowercase"] else query
+        with self._autocast():
+            if self.cfg["word_level"]:
+                tokens, mask = self.model.text_encoder.encode_query_tokens(text)
+                return tokens.float(), mask
+            emb = self.model.text_encoder.encode_query(text)
+        return emb.float().unsqueeze(0), None                       # (1, 1, d)
+
+    @torch.no_grad()
     def attention(self, video_path: str | Path, query: str,
                   fps: float | None = None) -> dict:
         """
@@ -303,8 +325,9 @@ class Orchestrator:
             dummy = torch.zeros(1, 4, self.d_model, device=self.device)
             frac = torch.linspace(0, 1, 4, device=self.device)
             q = torch.zeros(1, 1, self.d_model, device=self.device)
+            q_mask = torch.ones(1, 1, dtype=torch.bool, device=self.device) if self.cfg["word_level"] else None
             with self._autocast():
-                self.model(dummy, frac, q)
+                self.model(dummy, frac, q, query_mask=q_mask)
             logger.info("Warm-up forward complete.")
         except Exception as e:  # warm-up is best-effort
             logger.warning(f"Warm-up skipped: {e}")

@@ -56,10 +56,14 @@ class SpanExtractionHead(nn.Module):
             nn.Sigmoid(),
         )
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None):
         """
         Args:
-            x: (B, N, d_model) — query-aware frame embeddings
+            x:    (B, N, d_model) — query-aware frame embeddings
+            mask: (B, N) bool, True = real frame (optional). Pad frames get a start/end
+                  logit of -1e4 (softmax prob ~0, can never be decoded) and are left out
+                  of the confidence mean-pool. -1e4, not -inf: fits fp16 under autocast,
+                  and -inf would turn decode_best_span's `score * mask` into NaN.
 
         Returns:
             start_logits:  (B, N) — raw start scores per frame (use with CrossEntropy)
@@ -69,7 +73,13 @@ class SpanExtractionHead(nn.Module):
         start_logits = self.start_scorer(x).squeeze(-1)   # (B, N)
         end_logits   = self.end_scorer(x).squeeze(-1)     # (B, N)
 
-        pooled     = x.mean(dim=1)                        # (B, d_model)
+        if mask is None:
+            pooled = x.mean(dim=1)                        # (B, d_model)
+        else:
+            start_logits = start_logits.masked_fill(~mask, -1e4)
+            end_logits   = end_logits.masked_fill(~mask, -1e4)
+            m      = mask.unsqueeze(-1).to(x.dtype)                         # (B, N, 1)
+            pooled = (x * m).sum(dim=1) / m.sum(dim=1).clamp_min(1.0)      # mean over real frames
         confidence = self.confidence_head(pooled).squeeze(-1)  # (B,)
 
         return start_logits, end_logits, confidence

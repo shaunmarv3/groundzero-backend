@@ -26,6 +26,22 @@ from app.pipeline.span_extraction import SpanExtractionHead, decode_best_span, t
 # imported lazily inside predict() so training environments without ffmpeg still work
 
 
+# Architecture/behaviour switches saved into every checkpoint as "model_cfg", so
+# evaluate.py and the orchestrator rebuild exactly what was trained. A checkpoint
+# without "model_cfg" (the shipped best.pt) = all False = the original design.
+DEFAULT_MODEL_CFG = {
+    "use_gelu":     False,  # Fix 2: GELU between the temporal convs
+    "word_level":   False,  # Fix 3: frames attend over query word tokens (QD-DETR-style)
+    "mask_padding": False,  # Fix 4: batch-padding frames masked in attention / span head / loss
+    "lowercase":    False,  # queries lowercased before SigLIP 2 (its pretraining format)
+}
+
+
+def resolve_model_cfg(ckpt: dict) -> dict:
+    """Fill a checkpoint's model_cfg with defaults (old checkpoints have none)."""
+    return {**DEFAULT_MODEL_CFG, **ckpt.get("model_cfg", {})}
+
+
 class GroundZeroModel(nn.Module):
     """
     Full temporal video grounding model.
@@ -53,26 +69,34 @@ class GroundZeroModel(nn.Module):
         dropout: float = 0.1,
         device: str = "cuda",
         use_cache: bool = False,
+        use_gelu: bool = False,
+        word_level: bool = False,
+        load_text_encoder: bool = True,
     ):
         super().__init__()
         self.device = device
         self.d_model = d_model
         self.use_cache = use_cache
+        self.word_level = word_level
 
         if use_cache:
             # Cached-feature training (Phase 2): frame embeddings are pre-extracted
             # on disk, so the vision tower + LoRA are not needed at all — skipping
             # VisualEncoder saves ~1.75 GB VRAM and all the per-step vision compute.
-            # Only the frozen SigLIP text tower is needed, for encoding queries.
+            # Only the frozen SigLIP text tower is needed, for encoding queries —
+            # unless the queries are pre-encoded too (scripts/precompute_text_embeddings.py,
+            # load_text_encoder=False): then NO SigLIP is loaded at all (~4.5 GB saved,
+            # which is what lets training fit a 4 GB GPU).
             self.visual_encoder = None
-            self.text_encoder   = TextEncoder(model_id, device)
+            self.text_encoder   = TextEncoder(model_id, device) if load_text_encoder else None
         else:
             self.visual_encoder = VisualEncoder(model_id, lora_rank, lora_alpha, lora_layers, device)
             # Share the already-loaded SigLIP 2 backbone — avoids loading 1.1 GB twice
             self.text_encoder   = TextEncoder(model_id, device, shared_model=self.visual_encoder.model)
 
-        self.temporal_context = TemporalContextModule(d_model).to(device)
-        self.cross_modal      = CrossModalTransformer(d_model, n_heads, n_layers, dropout).to(device)
+        self.temporal_context = TemporalContextModule(d_model, use_gelu=use_gelu).to(device)
+        self.cross_modal      = CrossModalTransformer(d_model, n_heads, n_layers, dropout,
+                                                      word_level=word_level).to(device)
         self.span_head        = SpanExtractionHead(d_model, dropout).to(device)
 
     def forward(
@@ -80,23 +104,33 @@ class GroundZeroModel(nn.Module):
         frames: torch.Tensor,
         timestamps: torch.Tensor,
         query_emb: torch.Tensor,
+        frame_mask: torch.Tensor | None = None,
+        query_mask: torch.Tensor | None = None,
+        return_features: bool = False,
     ) -> tuple:
         """
         Training forward pass — accepts pre-encoded inputs.
 
         Args:
             frames:     (B, N, d_model) — frame embeddings from VisualEncoder
-            timestamps: (N,)            — fractional positions t/T in [0, 1]
-            query_emb:  (B, 1, d_model) — query embedding from TextEncoder
+            timestamps: (N,) or (B, N)  — fractional positions t/T in [0, 1]
+            query_emb:  (B, 1, d_model) pooled query, or (B, L, d_model) word tokens (word_level)
+            frame_mask: (B, N) bool, True = real frame (None = no padding masking)
+            query_mask: (B, L) bool, True = real token (word_level only)
+            return_features: also return the post-cross-modal frame features — what the
+                             contrastive loss must see (Fix 1)
 
         Returns:
             start_logits: (B, N)
             end_logits:   (B, N)
             confidence:   (B,)
+            [grounded:    (B, N, d_model)  — only if return_features]
         """
-        x = self.temporal_context(frames, timestamps)        # (B, N, d_model)
-        x = self.cross_modal(x, query_emb)                   # (B, N, d_model)
-        start_logits, end_logits, confidence = self.span_head(x)
+        x = self.temporal_context(frames, timestamps, frame_mask)            # (B, N, d_model)
+        x = self.cross_modal(x, query_emb, frame_mask, query_mask)           # (B, N, d_model)
+        start_logits, end_logits, confidence = self.span_head(x, frame_mask)
+        if return_features:
+            return start_logits, end_logits, confidence, x
         return start_logits, end_logits, confidence
 
     @torch.no_grad()
@@ -215,12 +249,14 @@ class GroundZeroModel(nn.Module):
             return trainable, total
 
         rows = {
-            "text_encoder":     _count(self.text_encoder),
             "temporal_context": _count(self.temporal_context),
             "cross_modal":      _count(self.cross_modal),
             "span_head":        _count(self.span_head),
         }
+        if self.text_encoder is not None and self.visual_encoder is None:
+            rows["text_encoder"] = _count(self.text_encoder)
         if self.visual_encoder is not None:
+            # TextEncoder shares this same SigLIP object — count it once, not twice
             rows["visual_encoder"] = _count(self.visual_encoder)
         total_trainable = sum(v[0] for v in rows.values())
         total_all       = sum(v[1] for v in rows.values())

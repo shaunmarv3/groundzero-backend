@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class SinusoidalPositionalEncoding(nn.Module):
@@ -40,10 +41,16 @@ class TemporalContextModule(nn.Module):
     30 seconds before and after it.
 
     Input/output shape: (B, N, d_model) — sequence length N is preserved.
+
+    use_gelu: GELU after each conv (the project.md spec). The shipped best.pt was
+              trained WITHOUT it — four Conv1d + LayerNorm with no activation stack
+              into something close to one linear filter. Off by default so old
+              checkpoints load and behave exactly as trained.
     """
 
-    def __init__(self, d_model: int = 1152, kernel_size: int = 5):
+    def __init__(self, d_model: int = 1152, kernel_size: int = 5, use_gelu: bool = False):
         super().__init__()
+        self.use_gelu = use_gelu
         self.pos_enc = SinusoidalPositionalEncoding(d_model)
 
         dilations = [1, 2, 4, 8]
@@ -61,11 +68,13 @@ class TemporalContextModule(nn.Module):
             nn.LayerNorm(d_model) for _ in dilations
         ])
 
-    def forward(self, x: torch.Tensor, timestamps: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, timestamps: torch.Tensor,
+                mask: torch.Tensor | None = None) -> torch.Tensor:
         # x:          (B, N, d_model) — frame embeddings from visual encoder
         # timestamps: (N,) or (B, N)  — fractional positions t/T in [0, 1]
         #             (N,)   → same timestamps for all samples (backward-compat / inference)
         #             (B, N) → per-sample timestamps (training with variable-length videos)
+        # mask:       (B, N) bool, True = real frame, False = batch padding (optional)
         # returns:    (B, N, d_model)
 
         if timestamps.dim() == 1:
@@ -77,10 +86,17 @@ class TemporalContextModule(nn.Module):
         x = x + pe  # inject position info
 
         for conv, norm in zip(self.convs, self.norms):
+            if mask is not None:
+                # zero the pad frames before every conv, so a real frame near the end of a
+                # short video sees zeros past its end — exactly what Conv1d's own "same"
+                # padding gives an unbatched video at inference
+                x = x * mask.unsqueeze(-1)
             residual = x                      # (B, N, d_model)
             x_t = x.transpose(1, 2)          # (B, d_model, N) — Conv1d format
             x_t = conv(x_t)                  # (B, d_model, N)
             x_t = x_t.transpose(1, 2)        # (B, N, d_model)
+            if self.use_gelu:
+                x_t = F.gelu(x_t)            # non-linearity, so the 4 layers don't collapse into ~1
             x = norm(x_t + residual)          # residual connection + LayerNorm
 
         return x

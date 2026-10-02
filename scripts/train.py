@@ -28,6 +28,24 @@ EXAMPLE RUN (Lightning.ai / any SSH machine):
     python scripts/train.py --batch_size 8 --max_hours 5.5
 
 ──────────────────────────────────────────────────────────────────────────────
+SESSION-35 FIXES (all off by default → no flags = the original shipped run):
+
+    --text_cache       queries from text_pooled*/text_tokens*.pt → NO SigLIP loaded
+    --fix_contrastive  Fix 1: contrastive loss on post-cross-modal features
+    --gelu             Fix 2: GELU between the temporal convs
+    --word_level       Fix 3: frames attend over query word tokens (QD-DETR-style)
+    --mask_padding     Fix 4: mask batch padding in attention / span head / losses
+    --all_fixes        = fixes 1-4      --lowercase   lowercase queries (*_lower.pt)
+    --run_name X       checkpoints go to <hf_repo>/X/ (parallel runs never collide)
+    --init_from P      fine-tune from P's trainable weights (fresh optimizer)
+    --resume_from_hf   new session, empty disk → pull <hf_repo>/X/latest.pt first
+
+    python scripts/train.py --use_cache --text_cache --all_fixes \
+        --data_dir /kaggle/working/data --skip_download \
+        --hf_repo shaunmarvell/qvhighlights-model --run_name s35-all-fixes \
+        --batch_size 32 --lr 1e-4 --epochs 200 --push_every 10 --resume_from_hf
+
+──────────────────────────────────────────────────────────────────────────────
 RESUME (auto-detects latest local checkpoint):
 
     python scripts/train.py --batch_size 8 --skip_download
@@ -62,7 +80,8 @@ import wandb
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from app.pipeline.groundzero_model import GroundZeroModel
+from app.pipeline.groundzero_model import GroundZeroModel, DEFAULT_MODEL_CFG
+from app.training.batch_encoding import TextCache, encode_cached_batch
 from app.training.dataset import (
     GroundingDataset, collate_fn,
     CachedGroundingDataset, cached_collate_fn,
@@ -186,7 +205,7 @@ def download_dataset(data_dir: Path, cache_only: bool = False,
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def encode_batch(model, batch, device, d_model=1152, chunk_size=8):
+def encode_batch(model, batch, device, d_model=1152, chunk_size=8, lowercase=False):
     """
     Encode one batch of PIL frame lists + query strings → tensors.
     Must be called inside torch.cuda.amp.autocast() so SigLIP runs in fp16.
@@ -196,10 +215,13 @@ def encode_batch(model, batch, device, d_model=1152, chunk_size=8):
     of B separate per-video passes of 8 frames each — far better SM occupancy
     on an H100/A100. Embeddings are then split back per-video using frame counts.
 
-    Returns:
-        frame_embs : (B, N_max, d_model)  float32, padded with zeros
-        timestamps : (B, N_max)           fractional t/duration, padded 1.0
-        query_emb  : (B, 1, d_model)      float32
+    Returns (same 6-tuple as encode_cached_batch):
+        frame_embs   : (B, N_max, d_model)  float32, padded with zeros
+        timestamps   : (B, N_max)           fractional t/duration, padded 1.0
+        frame_mask   : (B, N_max) bool      True = real frame
+        query        : (B, 1, d_model)      float32 (pooled — word-level needs the text cache)
+        query_mask   : None
+        query_pooled : (B, 1, d_model)      same tensor as query
     """
     B = len(batch["frames"])
 
@@ -231,49 +253,21 @@ def encode_batch(model, batch, device, d_model=1152, chunk_size=8):
     N_max      = max(counts)
     frame_embs = torch.zeros(B, N_max, d_model, device=device)
     timestamps = torch.ones(B, N_max, device=device)   # 1.0 = end-of-video pad position
+    frame_mask = torch.zeros(B, N_max, dtype=torch.bool, device=device)
 
     for i, (emb, ts) in enumerate(zip(emb_list, ts_list)):
         n = emb.shape[0]
         frame_embs[i, :n] = emb
         timestamps[i, :n] = ts
+        frame_mask[i, :n] = True
 
-    query_emb = model.text_encoder.encode_queries(batch["query"]).float().unsqueeze(1)  # (B,1,D)
-    return frame_embs, timestamps, query_emb
+    texts = [q.lower() for q in batch["query"]] if lowercase else batch["query"]
+    query_emb = model.text_encoder.encode_queries(texts).float().unsqueeze(1)  # (B,1,D)
+    return frame_embs, timestamps, frame_mask, query_emb, None, query_emb
 
 
-def encode_batch_cached(model, batch, device, d_model=1152):
-    """
-    Cached-feature counterpart to encode_batch (Phase 2).
-
-    Pads the pre-extracted per-video frame embeddings to the batch max, builds the
-    fractional-timestamp tensor, and encodes the queries live. NO visual encoder
-    runs — frame_embs come straight from cache/{vid}.pt via CachedGroundingDataset.
-
-    Returns:
-        frame_embs : (B, N_max, d_model) float32, zero-padded
-        timestamps : (B, N_max)          fractional t/duration, padded 1.0
-        query_emb  : (B, 1, d_model)     float32
-    """
-    B      = len(batch["frame_embs"])
-    counts = [e.shape[0] for e in batch["frame_embs"]]
-    N_max  = max(counts)
-
-    frame_embs = torch.zeros(B, N_max, d_model, device=device)
-    timestamps = torch.ones(B, N_max, device=device)   # 1.0 = end-of-video pad position
-
-    for i in range(B):
-        emb = batch["frame_embs"][i].to(device).float()   # (N_i, d_model), fp16→fp32
-        n   = emb.shape[0]
-        frame_embs[i, :n] = emb
-        dur_i = batch["duration"][i].item()
-        frac  = torch.tensor(
-            [t / dur_i for t in batch["timestamps"][i]],
-            dtype=torch.float32, device=device,
-        )
-        timestamps[i, :n] = frac
-
-    query_emb = model.text_encoder.encode_queries(batch["query"]).float().unsqueeze(1)  # (B,1,D)
-    return frame_embs, timestamps, query_emb
+# encode_batch_cached moved to app/training/batch_encoding.py (encode_cached_batch),
+# shared with evaluate.py so the two can't drift apart.
 
 
 def temporal_iou(s1, e1, s2, e2):
@@ -292,7 +286,7 @@ def save_and_push(
     model, optimizer, scheduler, scaler,
     epoch, global_step, best_r1_05, r1_05,
     ckpt_dir, hf_repo, api, is_best,
-    push_latest=True,
+    push_latest=True, model_cfg=None, run_name=None,
 ):
     """
     Save two checkpoints every epoch:
@@ -318,12 +312,13 @@ def save_and_push(
             "scaler":          scaler.state_dict(),
             "best_r1_05":      best_r1_05,
             "r1_iou05":        r1_05,
+            "model_cfg":       model_cfg or dict(DEFAULT_MODEL_CFG),
         },
         latest_path,
     )
     print(f"  Saved latest.pt (ep {epoch}, R@1={r1_05:.4f})")
     if push_latest:
-        _push(latest_path, hf_repo, api)
+        _push(latest_path, hf_repo, api, run_name)
     else:
         print(f"  (skipped HF push of latest.pt — next push per --push_every)")
 
@@ -335,45 +330,83 @@ def save_and_push(
                 "epoch":           epoch,
                 "r1_iou05":        best_r1_05,
                 "trainable_state": t_state,
+                "model_cfg":       model_cfg or dict(DEFAULT_MODEL_CFG),
             },
             best_path,
         )
         print(f"  Saved best.pt (R@1={best_r1_05:.4f}  ← new best)")
-        _push(best_path, hf_repo, api)
+        _push(best_path, hf_repo, api, run_name)
 
 
-def _push(ckpt_path: Path, hf_repo: str, api: HfApi):
+def _hf_path(name: str, run_name: str | None) -> str:
+    """Each run gets its own folder in the HF repo, so parallel runs never overwrite each other."""
+    return f"{run_name}/{name}" if run_name else name
+
+
+def _push(ckpt_path: Path, hf_repo: str, api: HfApi, run_name: str | None = None):
     try:
         api.create_repo(hf_repo, repo_type="model", exist_ok=True)
         api.upload_file(
             path_or_fileobj=str(ckpt_path),
-            path_in_repo=ckpt_path.name,
+            path_in_repo=_hf_path(ckpt_path.name, run_name),
             repo_id=hf_repo,
             repo_type="model",
         )
-        print(f"  Pushed {ckpt_path.name} → hf:{hf_repo}")
+        print(f"  Pushed {ckpt_path.name} → hf:{hf_repo}/{_hf_path(ckpt_path.name, run_name)}")
     except Exception as exc:
         print(f"  HF push failed (non-fatal): {exc}")
 
 
+def forward_batch(model, batch, device, args, text_cache=None) -> dict:
+    """
+    Encode one batch + run the model. Call inside autocast. Shared by the training
+    loop and validate() so both always run the identical path.
+    """
+    if args.use_cache:
+        fe, ts, fmask, q, qmask, qpool = encode_cached_batch(
+            model, batch, device, text_cache=text_cache, lowercase=args.lowercase)
+    else:
+        fe, ts, fmask, q, qmask, qpool = encode_batch(
+            model, batch, device, chunk_size=args.chunk_size, lowercase=args.lowercase)
+    start_logits, end_logits, confidence, grounded = model(
+        fe, ts, q,
+        frame_mask=fmask if args.mask_padding else None,   # Fix 4
+        query_mask=qmask,
+        return_features=True,
+    )
+    return {"start": start_logits, "end": end_logits, "conf": confidence,
+            "grounded": grounded, "frame_embs": fe, "frame_mask": fmask, "query_pooled": qpool}
+
+
+def contrastive_inputs(out: dict, pos: torch.Tensor, args) -> tuple:
+    """
+    What the contrastive term sees, for the positive (non-negative-query) samples.
+    Fix 1: the post-cross-modal `grounded` features — a function of trainable weights.
+    Without --fix_contrastive: the raw cached `frame_embs` (the original bug, kept so
+    the old run is reproducible) — no grad path → the term is a constant.
+    """
+    feats   = out["grounded"] if args.fix_contrastive else out["frame_embs"]
+    lengths = out["frame_mask"].sum(dim=1) if args.mask_padding else None
+    return (out["query_pooled"][pos], feats[pos],
+            lengths[pos] if lengths is not None else None)
+
+
 @torch.no_grad()
-def validate(model, val_loader, device, chunk_size=8, use_cache=False):
+def validate(model, val_loader, device, args, text_cache=None):
     model.eval()
     hits_05 = hits_07 = total = 0
     val_loss_sum = 0.0
 
     for batch in val_loader:
         with torch.cuda.amp.autocast():
-            if use_cache:
-                frame_embs, timestamps, query_emb = encode_batch_cached(model, batch, device)
-            else:
-                frame_embs, timestamps, query_emb = encode_batch(model, batch, device, chunk_size=chunk_size)
-            start_logits, end_logits, confidence = model(frame_embs, timestamps, query_emb)
+            out = forward_batch(model, batch, device, args, text_cache)
+        start_logits, end_logits = out["start"], out["end"]
 
         for i in range(start_logits.shape[0]):
             # timestamps is present in both the JPEG and cached collates; frames is not
             n_frames = len(batch["timestamps"][i])
-            s_idx, e_idx = decode_best_span(start_logits[i], end_logits[i])
+            # decode over real frames only — same as evaluate.py
+            s_idx, e_idx = decode_best_span(start_logits[i, :n_frames], end_logits[i, :n_frames])
             s_idx = min(s_idx, n_frames - 1)
             e_idx = min(e_idx, n_frames - 1)
             dur_i  = batch["duration"][i].item()
@@ -389,12 +422,13 @@ def validate(model, val_loader, device, chunk_size=8, use_cache=False):
 
         pos = ~batch["is_negative"].to(device)
         if pos.any():
+            q_pool, feats, lengths = contrastive_inputs(out, pos, args)
             with torch.cuda.amp.autocast():
                 loss, *_ = combined_loss(
                     start_logits[pos], end_logits[pos],
                     batch["gt_start_idx"].to(device)[pos],
                     batch["gt_end_idx"].to(device)[pos],
-                    query_emb[pos], frame_embs[pos],
+                    q_pool, feats, lengths=lengths,
                 )
             val_loss_sum += loss.item()
 
@@ -466,7 +500,46 @@ def parse_args():
     p.add_argument("--n_heads",    type=int,   default=8)
     p.add_argument("--dropout",    type=float, default=0.1)
 
-    return p.parse_args()
+    # Session-35 fixes — every one is OFF by default, so with no flags this script
+    # reproduces the original (shipped) training run exactly.
+    p.add_argument("--text_cache", action="store_true",
+                   help="Read queries from text_pooled*.pt / text_tokens*.pt "
+                        "(scripts/precompute_text_embeddings.py) — no SigLIP loaded at all. "
+                        "Needs --use_cache. Downloaded from HF into --data_dir if missing.")
+    p.add_argument("--fix_contrastive", action="store_true",
+                   help="Fix 1: contrastive loss on the post-cross-modal features "
+                        "(original passed the frozen cached input → zero gradient).")
+    p.add_argument("--gelu",         action="store_true", help="Fix 2: GELU between the temporal convs.")
+    p.add_argument("--word_level",   action="store_true",
+                   help="Fix 3: frames cross-attend over query word tokens (QD-DETR-style). "
+                        "Needs --text_cache.")
+    p.add_argument("--mask_padding", action="store_true",
+                   help="Fix 4: mask batch-padding frames in attention, span head and losses.")
+    p.add_argument("--all_fixes",    action="store_true",
+                   help="Shorthand for --fix_contrastive --gelu --word_level --mask_padding.")
+    p.add_argument("--lowercase",    action="store_true",
+                   help="Lowercase queries (SigLIP 2's pretraining format; uses *_lower.pt).")
+
+    # Run management
+    p.add_argument("--run_name", default=None,
+                   help="W&B run name AND the folder in --hf_repo this run's checkpoints go to "
+                        "(so two runs in parallel never overwrite each other).")
+    p.add_argument("--init_from", default=None,
+                   help="Load ONLY the trainable weights from this checkpoint (e.g. the shipped "
+                        "best.pt) and start a fresh optimizer/schedule — a fine-tune, not a resume.")
+    p.add_argument("--resume_from_hf", action="store_true",
+                   help="If no local latest.pt, pull <run_name>/latest.pt from --hf_repo first "
+                        "(a new Kaggle session starts with an empty disk).")
+    p.add_argument("--no_wandb", action="store_true", help="Disable W&B logging entirely.")
+
+    args = p.parse_args()
+    if args.all_fixes:
+        args.fix_contrastive = args.gelu = args.word_level = args.mask_padding = True
+    if args.text_cache and not args.use_cache:
+        p.error("--text_cache needs --use_cache (frames from cache, text from cache)")
+    if args.word_level and not args.text_cache:
+        p.error("--word_level needs --text_cache (word tokens come from text_tokens*.pt)")
+    return args
 
 
 def main():
@@ -475,7 +548,7 @@ def main():
     # ── Auth ─────────────────────────────────────────────────────────────────
     if args.hf_token:
         login(token=args.hf_token)
-    if args.wandb_key:
+    if args.wandb_key and not args.no_wandb:
         wandb.login(key=args.wandb_key)
 
     # ── Device ───────────────────────────────────────────────────────────────
@@ -548,7 +621,20 @@ def main():
         dropout=args.dropout,
         device=DEVICE,
         use_cache=args.use_cache,
+        use_gelu=args.gelu,
+        word_level=args.word_level,
+        load_text_encoder=not args.text_cache,     # text cache → no SigLIP in memory at all
     )
+    model_cfg = {
+        "use_gelu":     args.gelu,
+        "word_level":   args.word_level,
+        "mask_padding": args.mask_padding,
+        "lowercase":    args.lowercase,
+    }
+    print(f"model_cfg: {model_cfg}  |  fix_contrastive={args.fix_contrastive}")
+    text_cache = (TextCache(data_dir, lowercase=args.lowercase, word_level=args.word_level,
+                            token=args.hf_token or None)
+                  if args.text_cache else None)
     counts = model.count_params()
     print(f"Trainable: {counts['total_trainable'] / 1e6:.1f} M  |  "
           f"Frozen: {counts['total_frozen'] / 1e6:.1f} M")
@@ -584,6 +670,14 @@ def main():
     resume_path = args.resume
     if resume_path is None:
         candidate = ckpt_dir / "latest.pt"
+        if not candidate.exists() and args.resume_from_hf:
+            try:
+                print(f"\nNo local latest.pt — trying hf:{args.hf_repo}/{_hf_path('latest.pt', args.run_name)}")
+                got = hf_hub_download(args.hf_repo, _hf_path("latest.pt", args.run_name),
+                                      repo_type="model", local_dir=str(ckpt_dir))
+                os.replace(got, candidate)
+            except Exception as exc:
+                print(f"  nothing to resume on HF ({type(exc).__name__}) — starting fresh")
         if candidate.exists():
             resume_path = str(candidate)
             print(f"\nAuto-resume: found {candidate}")
@@ -601,15 +695,28 @@ def main():
         best_r1_05  = ckpt.get("best_r1_05", 0.0)
         print(f"Resumed from epoch {ckpt['epoch']}  step {global_step}  "
               f"best R@1={best_r1_05:.4f}")
+    elif args.init_from:
+        src = torch.load(args.init_from, map_location=DEVICE)
+        missing, unexpected = model.load_state_dict(src["trainable_state"], strict=False)
+        trainable  = {n for n, p_ in model.named_parameters() if p_.requires_grad}
+        not_loaded = sorted(trainable & set(missing))
+        print(f"\nInit from {args.init_from}: loaded {len(src['trainable_state'])} tensors | "
+              f"{len(unexpected)} unexpected | {len(not_loaded)} trainable tensors NOT in it")
+        if unexpected or not_loaded:
+            print(f"  WARNING arch mismatch — unexpected {list(unexpected)[:3]} / not loaded {not_loaded[:3]}")
+        print("  Fresh optimizer + LR schedule (fine-tune, not resume).")
     else:
         print("\nStarting fresh (no checkpoint found)")
 
     # ── W&B ───────────────────────────────────────────────────────────────────
+    wandb_mode = ("disabled" if args.no_wandb else
+                  "online" if (args.wandb_key or os.environ.get("WANDB_API_KEY")) else "offline")
     run = wandb.init(
         project="groundzero",
-        name=f"train-siglip2-lora-r{args.lora_rank}-bs{args.batch_size}",
+        name=args.run_name or f"train-siglip2-lora-r{args.lora_rank}-bs{args.batch_size}",
         config=vars(args),
         resume="allow",
+        mode=wandb_mode,
     )
 
     api         = HfApi()
@@ -647,6 +754,7 @@ def main():
                         model, optimizer, scheduler, scaler,
                         epoch, global_step, best_r1_05, 0.0,
                         ckpt_dir, args.hf_repo, api, is_best=False,
+                        model_cfg=model_cfg, run_name=args.run_name,
                     )
                     run.finish()
                     return
@@ -655,11 +763,8 @@ def main():
             do_update     = ((batch_idx + 1) % args.grad_accum == 0) or is_last_batch
 
             with torch.cuda.amp.autocast():
-                if args.use_cache:
-                    frame_embs, timestamps, query_emb = encode_batch_cached(model, batch, DEVICE)
-                else:
-                    frame_embs, timestamps, query_emb = encode_batch(model, batch, DEVICE, chunk_size=args.chunk_size)
-                start_logits, end_logits, confidence = model(frame_embs, timestamps, query_emb)
+                out = forward_batch(model, batch, DEVICE, args, text_cache)
+                start_logits, end_logits, confidence = out["start"], out["end"], out["conf"]
 
                 gt_start = batch["gt_start_idx"].to(DEVICE)
                 gt_end   = batch["gt_end_idx"].to(DEVICE)
@@ -667,10 +772,11 @@ def main():
                 pos_mask = ~is_neg
 
                 if pos_mask.any():
+                    q_pool, feats, lengths = contrastive_inputs(out, pos_mask, args)
                     total_l, span_l, iou_l, cont_l = combined_loss(
                         start_logits[pos_mask], end_logits[pos_mask],
                         gt_start[pos_mask], gt_end[pos_mask],
-                        query_emb[pos_mask], frame_embs[pos_mask],
+                        q_pool, feats, lengths=lengths,
                     )
                 else:
                     total_l = span_l = iou_l = cont_l = torch.tensor(0.0, device=DEVICE)
@@ -748,7 +854,7 @@ def main():
 
         # ── Validate ──────────────────────────────────────────────────────────
         print("  Validating...")
-        vm = validate(model, val_loader, DEVICE, chunk_size=args.chunk_size, use_cache=args.use_cache)
+        vm = validate(model, val_loader, DEVICE, args, text_cache)
         wandb.log({**vm, "epoch": epoch}, step=global_step)
         print(
             f"  Val  R@1 IoU=0.5: {vm['val/r1_iou05']:.4f}  "
@@ -766,7 +872,7 @@ def main():
             model, optimizer, scheduler, scaler,
             epoch, global_step, best_r1_05, vm["val/r1_iou05"],
             ckpt_dir, args.hf_repo, api, is_best=is_best,
-            push_latest=push_latest,
+            push_latest=push_latest, model_cfg=model_cfg, run_name=args.run_name,
         )
         print()
 

@@ -93,6 +93,28 @@ class TextEncoder(nn.Module):
         features = out if isinstance(out, torch.Tensor) else out.pooler_output  # (N, 1152)
         return features
 
+    def encode_query_tokens(self, query: str) -> tuple:
+        """
+        Per-token text states for word-level cross-attention (Fix 3). Same processor call
+        as encode_query / scripts/precompute_text_embeddings.py.
+
+        Returns:
+            tokens : (1, L, 1152) — last_hidden_state of the text tower (L = 64 for SigLIP 2)
+            mask   : (1, L) bool  — True = real token, False = padding
+        """
+        inputs = self.processor(
+            text=[query],
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+        ).to(self.device)
+        tokens = self.model.text_model(**inputs).last_hidden_state          # (1, L, 1152)
+        if "attention_mask" in inputs:
+            mask = inputs["attention_mask"].bool()
+        else:
+            mask = inputs["input_ids"] != self.processor.tokenizer.pad_token_id
+        return tokens, mask
+
     def count_params(self) -> dict:
         trainable = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         total = sum(p.numel() for p in self.model.parameters())

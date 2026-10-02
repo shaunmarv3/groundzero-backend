@@ -13,7 +13,12 @@ Computes:
 
 WHY no train.py import: train.py does a top-level `import wandb`, which isn't always
 installed on a fresh eval box. We import the model/dataset/decoders straight from app/
-and re-implement the two tiny helpers (encode_batch_cached, temporal_iou) locally.
+(batch building is shared with train.py via app/training/batch_encoding.py) and
+re-implement only temporal_iou locally.
+
+The architecture is read from the checkpoint's "model_cfg" (GELU / word-level /
+padding mask / lowercase). The shipped best.pt has none → original design.
+--text_cache uses the pre-encoded queries → no SigLIP loaded (fits a 4 GB GPU).
 
 EXAMPLE (Kaggle / any GPU box, after pulling the cache tar + best.pt):
     python scripts/evaluate.py \
@@ -34,7 +39,8 @@ from torch.utils.data import DataLoader
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from app.pipeline.groundzero_model import GroundZeroModel
+from app.pipeline.groundzero_model import GroundZeroModel, resolve_model_cfg
+from app.training.batch_encoding import TextCache, encode_cached_batch
 from app.pipeline.span_extraction import decode_best_span, to_seconds
 from app.training.dataset import CachedGroundingDataset, cached_collate_fn
 
@@ -47,29 +53,6 @@ def temporal_iou(s1, e1, s2, e2):
     inter = max(0.0, min(e1, e2) - max(s1, s2))
     union = max(e1, e2) - min(s1, s2)
     return inter / union if union > 0 else 0.0
-
-
-def encode_batch_cached(model, batch, device, d_model=1152):
-    """Pad cached per-video embeddings to batch max, build fractional timestamps,
-    encode queries live. Mirror of train.py's encode_batch_cached."""
-    B      = len(batch["frame_embs"])
-    counts = [e.shape[0] for e in batch["frame_embs"]]
-    N_max  = max(counts)
-
-    frame_embs = torch.zeros(B, N_max, d_model, device=device)
-    timestamps = torch.ones(B, N_max, device=device)   # 1.0 = end-of-video pad
-
-    for i in range(B):
-        emb = batch["frame_embs"][i].to(device).float()
-        n   = emb.shape[0]
-        frame_embs[i, :n] = emb
-        dur_i = batch["duration"][i].item()
-        frac  = torch.tensor([t / dur_i for t in batch["timestamps"][i]],
-                             dtype=torch.float32, device=device)
-        timestamps[i, :n] = frac
-
-    query_emb = model.text_encoder.encode_queries(batch["query"]).float().unsqueeze(1)
-    return frame_embs, timestamps, query_emb
 
 
 def decode_topk_spans(start_logits, end_logits, k=5, nms_iou=0.5):
@@ -120,6 +103,9 @@ def main():
     ap.add_argument("--dropout",  type=float, default=0.1)
     ap.add_argument("--lora_rank",  type=int, default=8)
     ap.add_argument("--lora_alpha", type=int, default=16)
+    ap.add_argument("--text_cache", action="store_true",
+                    help="Use text_pooled*/text_tokens*.pt instead of the live SigLIP text tower "
+                         "(no SigLIP loaded). Required for word-level checkpoints.")
     args = ap.parse_args()
 
     device    = "cuda" if torch.cuda.is_available() else "cpu"
@@ -140,6 +126,10 @@ def main():
     ckpt = torch.load(ckpt_path, map_location="cpu")
     print(f"Checkpoint: {ckpt_path}  (epoch={ckpt.get('epoch')}, "
           f"saved R@1@0.5={ckpt.get('r1_iou05')})")
+    cfg = resolve_model_cfg(ckpt)
+    print(f"model_cfg: {cfg}")
+    if cfg["word_level"] and not args.text_cache:
+        sys.exit("ERROR: word-level checkpoint — pass --text_cache (word tokens come from text_tokens*.pt).")
 
     # ── Model (cache mode → no vision tower) ────────────────────────────────────
     print("Building model + loading trainable weights...")
@@ -149,7 +139,12 @@ def main():
         lora_rank=args.lora_rank, lora_alpha=args.lora_alpha,
         lora_layers=[23, 24, 25, 26], dropout=args.dropout,
         device=device, use_cache=True,
+        use_gelu=cfg["use_gelu"], word_level=cfg["word_level"],
+        load_text_encoder=not args.text_cache,
     )
+    text_cache = (TextCache(data_dir, lowercase=cfg["lowercase"], word_level=cfg["word_level"],
+                            token=args.hf_token or None)
+                  if args.text_cache else None)
     missing, unexpected = model.load_state_dict(ckpt["trainable_state"], strict=False)
     # 'missing' will list the frozen text-tower keys (loaded from pretrained) — expected.
     loaded = len(ckpt["trainable_state"])
@@ -183,8 +178,13 @@ def main():
     with torch.no_grad():
         for batch in loader:
             with torch.cuda.amp.autocast():
-                frame_embs, timestamps, query_emb = encode_batch_cached(model, batch, device)
-                start_logits, end_logits, confidence = model(frame_embs, timestamps, query_emb)
+                frame_embs, timestamps, frame_mask, query, query_mask, _ = encode_cached_batch(
+                    model, batch, device, text_cache=text_cache, lowercase=cfg["lowercase"])
+                start_logits, end_logits, confidence = model(
+                    frame_embs, timestamps, query,
+                    frame_mask=frame_mask if cfg["mask_padding"] else None,
+                    query_mask=query_mask,
+                )
 
             for i in range(start_logits.shape[0]):
                 ts_i   = batch["timestamps"][i]
