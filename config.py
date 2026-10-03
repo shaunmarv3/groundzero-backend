@@ -47,8 +47,10 @@ class Settings(BaseSettings):
         description="HuggingFace Hub repo ID for trained weights",
     )
     ckpt_name: str = Field(
-        default="best.pt",
-        description="Checkpoint filename inside hf_model_repo / model_path dir",
+        default="s35-fixes-pooled/best.pt",
+        description="Checkpoint path inside hf_model_repo (HF fallback when model_path is missing). "
+                    "Session 35 model A (fixes 1+2+4): R@1@0.5 0.5871 / @0.7 0.4490 on QVHighlights val. "
+                    "The original shipped model (0.5413) is still at 'best.pt' in the repo root.",
     )
     model_path: str = Field(
         default="models/best.pt",
